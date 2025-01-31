@@ -11,9 +11,11 @@ exec --no-startup-id picom
 exec --no-startup-id feh --bg-scale ~/backgrounds/nice-blue-background.png
 exec --no-startup-id xrdb -merge ~/.Xresources
 
-exec --no-startup-id eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519
+exec --no-startup-id eval "$(ssh-agent -s)"
+exec --no-startup-id ssh-add ~/.ssh/id_ed25519
 bindsym $mod+p exec --no-startup-id ~/.config/i3/display_menu.sh
-exec_always --no-startup-id setxkbmap -option caps:swapescape -option ctrl:swap_lalt_lctl
+exec_always --no-startup-id setxkbmap -option caps:swapescape -option ctrl:swap_lalt_lctl -variant custom
+bindsym $mod+Shift+x exec systemctl sleep
 
 # kill any hanging polybar processes
 exec_always killall polybar

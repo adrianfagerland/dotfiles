@@ -1,0 +1,1 @@
+/home/adrian/backup/Mackup/.xinitrc
