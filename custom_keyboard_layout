@@ -1,4 +1,5 @@
 // This file should be placed inside /usr/share/X11/xkb/symbols/us
+// The only relevant paragraph is the very bottom one
 // Keyboard layouts for the United States of America.
 
 default partial alphanumeric_keys modifier_keys
