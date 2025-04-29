@@ -16,6 +16,8 @@ bindsym $mod+p exec --no-startup-id ~/.config/i3/display_menu.sh
 exec_always --no-startup-id setxkbmap -option caps:swapescape -option ctrl:swap_lalt_lctl -variant custom
 bindsym $mod+Shift+x exec systemctl sleep
 
+exec --no-startup-id /usr/bin/dunst
+
 # kill any hanging polybar processes
 exec_always killall polybar
 exec_always --no-startup-id ~/.config/polybar/launch_polybar.sh
@@ -70,6 +72,9 @@ bindsym $mod+Return exec alacritty
 
 # kill focused window
 bindsym $mod+q kill
+
+# start brave
+bindsym $mod+b exec brave
 
 # start rofi (a program launcher)
 bindsym $mod+d exec --no-startup-id rofi -show drun
