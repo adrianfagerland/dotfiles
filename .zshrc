@@ -156,6 +156,11 @@ eval "$(uvx --generate-shell-completion zsh)"
 alias dotfiles='git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
 
+# Start ssh-agent if not already running
+if ! pgrep -u "$USER" ssh-agent > /dev/null; then
+    eval "$(ssh-agent -s)" > /dev/null
+fi
+
 # bun completions
 [ -s "/home/adrian/.bun/_bun" ] && source "/home/adrian/.bun/_bun"
 
