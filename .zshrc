@@ -137,6 +137,7 @@ alias venv='source .venv/bin/activate'
 
 bindkey '`' autosuggest-accept
 
+alias v='vim'
 alias o='xdg-open'
 alias open='xdg-open'
 alias sov='systemctl sleep'
@@ -154,3 +155,10 @@ eval "$(uvx --generate-shell-completion zsh)"
 
 alias dotfiles='git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
+
+# bun completions
+[ -s "/home/adrian/.bun/_bun" ] && source "/home/adrian/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
