@@ -1,6 +1,14 @@
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
+export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
+
+# Start ssh-agent if not already running
+if ! pgrep -u "$USER" ssh-agent > /dev/null; then
+    eval "$(ssh-agent -s)" > /dev/null
+fi
+
+ssh-add ~/.ssh/id_ed25519
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
@@ -144,6 +152,8 @@ alias sov='systemctl sleep'
 alias bye='shutdown now'
 alias ciao='shutdown now'
 
+alias c='claude --dangerously-skip-permissions'
+
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f '/home/adrian/google-cloud-sdk/path.zsh.inc' ]; then . '/home/adrian/google-cloud-sdk/path.zsh.inc'; fi
 
@@ -154,16 +164,15 @@ eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
 
 alias dotfiles='git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
-export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
-
-# Start ssh-agent if not already running
-if ! pgrep -u "$USER" ssh-agent > /dev/null; then
-    eval "$(ssh-agent -s)" > /dev/null
-fi
-
 # bun completions
 [ -s "/home/adrian/.bun/_bun" ] && source "/home/adrian/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Checklist parallel checkout navigation
+alias za='cd /home/adrian/vedtak/checklist-a'
+alias zb='cd /home/adrian/vedtak/checklist-b'
+alias zc='cd /home/adrian/vedtak/checklist-c'
+alias zmain='cd /home/adrian/vedtak/checklist'
