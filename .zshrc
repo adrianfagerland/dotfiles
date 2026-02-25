@@ -176,3 +176,88 @@ alias za='cd /home/adrian/vedtak/checklist-a'
 alias zb='cd /home/adrian/vedtak/checklist-b'
 alias zc='cd /home/adrian/vedtak/checklist-c'
 alias zmain='cd /home/adrian/vedtak/checklist'
+
+# pnpm
+export PNPM_HOME="/home/adrian/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
+
+alias codex-app="/home/adrian/apps/codex-port/run-codex.sh"
+
+# Google Drive browser opener
+# Usage: gd [path]  (defaults to current directory)
+unalias gd 2>/dev/null
+gd() {
+  local GDRIVE_ROOT="/home/adrian/gdrive"
+  local RCLONE_REMOTE="vedtak-shared"
+  local TEAM_DRIVE_ROOT_ID="0ANLilboyAAoHUk9PVA"
+
+  local target
+  if [[ $# -eq 0 ]]; then
+    target="$PWD"
+  elif [[ "$1" == /* ]]; then
+    target="$1"
+  else
+    target="$PWD/$1"
+  fi
+
+  if [[ "$target" != "$GDRIVE_ROOT" && "$target" != "$GDRIVE_ROOT/"* ]]; then
+    echo "gd: '$target' is not inside $GDRIVE_ROOT" >&2
+    return 1
+  fi
+
+  if [[ ! -e "$target" ]]; then
+    echo "gd: '$target' does not exist" >&2
+    return 1
+  fi
+
+  local rel="${target#$GDRIVE_ROOT}"
+  rel="${rel#/}"
+
+  local url
+  if [[ -z "$rel" ]]; then
+    url="https://drive.google.com/drive/folders/${TEAM_DRIVE_ROOT_ID}"
+  else
+    local name parent_rel rclone_parent json_out id
+    name="$(basename "$rel")"
+    parent_rel="$(dirname "$rel")"
+
+    if [[ "$parent_rel" == "." ]]; then
+      rclone_parent="${RCLONE_REMOTE}:"
+    else
+      rclone_parent="${RCLONE_REMOTE}:${parent_rel}"
+    fi
+
+    json_out=$(rclone lsjson "$rclone_parent" 2>&1)
+    if [[ $? -ne 0 ]]; then
+      echo "gd: rclone failed to list '$rclone_parent'" >&2
+      echo "$json_out" >&2
+      return 1
+    fi
+
+    id=$(printf '%s' "$json_out" | jq -r --arg n "$name" '.[] | select(.Name == $n) | .ID')
+
+    if [[ -z "$id" ]]; then
+      echo "gd: could not find '$name' in Google Drive" >&2
+      return 1
+    fi
+
+    if [[ -d "$target" ]]; then
+      url="https://drive.google.com/drive/folders/${id}"
+    else
+      local ext="${${target:t}##*.}"
+      case "${ext:l}" in
+        doc|docx)  url="https://docs.google.com/document/d/${id}/edit" ;;
+        xls|xlsx)  url="https://docs.google.com/spreadsheets/d/${id}/edit" ;;
+        ppt|pptx)  url="https://docs.google.com/presentation/d/${id}/edit" ;;
+        *)         url="https://drive.google.com/file/d/${id}/view" ;;
+      esac
+    fi
+  fi
+
+  echo "Opening: $url"
+  xdg-open "$url"
+}
