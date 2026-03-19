@@ -1,0 +1,35 @@
+#!/bin/bash
+PIDFILE="/tmp/push-to-talk.pid"
+AUDIOFILE="/tmp/push-to-talk.wav"
+API_KEY=$(cat ~/.config/push-to-talk/groq_api_key)
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    # Stop recording (SIGINT lets rec finalize the WAV header)
+    PID=$(cat "$PIDFILE")
+    kill -INT "$PID" 2>/dev/null
+    # Wait for rec to finalize the WAV file
+    while kill -0 "$PID" 2>/dev/null; do sleep 0.1; done
+    rm -f "$PIDFILE"
+    notify-send -u low -t 2000 "Transcribing..." -h string:x-dunst-stack-tag:ptt
+
+    # Transcribe via Groq Whisper API
+    RESPONSE=$(curl -s https://api.groq.com/openai/v1/audio/transcriptions \
+        -H "Authorization: Bearer $API_KEY" \
+        -F "file=@$AUDIOFILE" \
+        -F "model=whisper-large-v3-turbo" \
+        -F "temperature=0" \
+        -F "response_format=json")
+
+    TEXT=$(echo "$RESPONSE" | jq -r '.text // empty')
+
+    if [ -n "$TEXT" ]; then
+        xdotool type --delay 12 -- "$TEXT"
+    fi
+
+    rm -f "$AUDIOFILE"
+else
+    # Start recording
+    notify-send -u low -t 0 "Recording..." -h string:x-dunst-stack-tag:ptt
+    arecord -f S16_LE -r 44100 -c 1 -q "$AUDIOFILE" &
+    echo $! > "$PIDFILE"
+fi
