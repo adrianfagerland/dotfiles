@@ -23,7 +23,8 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
     TEXT=$(echo "$RESPONSE" | jq -r '.text // empty')
 
     if [ -n "$TEXT" ]; then
-        xdotool type --delay 12 -- "$TEXT"
+        echo -n "$TEXT" | xclip -selection primary
+        xdotool click 2
     fi
 
     rm -f "$AUDIOFILE"
