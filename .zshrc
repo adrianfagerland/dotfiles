@@ -1,14 +1,15 @@
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
-export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
-
-# Start ssh-agent if not already running
-if ! pgrep -u "$USER" ssh-agent > /dev/null; then
+# ssh-agent: on Linux use XDG_RUNTIME_DIR socket; on macOS, launchd provides one.
+if [[ "$OSTYPE" == linux* ]] && [[ -n "$XDG_RUNTIME_DIR" ]]; then
+  export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
+  if ! pgrep -u "$USER" ssh-agent > /dev/null; then
     eval "$(ssh-agent -s)" > /dev/null
+  fi
 fi
 
-ssh-add ~/.ssh/id_ed25519
+[[ -f ~/.ssh/id_ed25519 ]] && ssh-add ~/.ssh/id_ed25519 2>/dev/null
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
@@ -95,8 +96,8 @@ plugins=(git
  zsh-syntax-highlighting
  zsh-history-substring-search
  you-should-use
- nvm
- debian)
+ nvm)
+[[ "$OSTYPE" == linux* ]] && plugins+=(debian)
 
 export ZSH_COMPDUMP=$ZSH/cache/.zcompdump-$HOST
 source $ZSH/oh-my-zsh.sh
@@ -146,52 +147,61 @@ alias venv='source .venv/bin/activate'
 bindkey '`' autosuggest-accept
 
 alias v='vim'
-alias o='xdg-open'
-alias open='xdg-open'
-alias sov='systemctl sleep'
-alias bye='shutdown now'
-alias ciao='shutdown now'
+if [[ "$OSTYPE" == darwin* ]]; then
+  alias o='open'
+  alias sov='pmset sleepnow'
+  alias bye='sudo shutdown -h now'
+  alias ciao='sudo shutdown -h now'
+else
+  alias o='xdg-open'
+  alias open='xdg-open'
+  alias sov='systemctl sleep'
+  alias bye='shutdown now'
+  alias ciao='shutdown now'
+fi
 
 alias c='claude --dangerously-skip-permissions'
 
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f '/home/adrian/google-cloud-sdk/path.zsh.inc' ]; then . '/home/adrian/google-cloud-sdk/path.zsh.inc'; fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f '/home/adrian/google-cloud-sdk/completion.zsh.inc' ]; then . '/home/adrian/google-cloud-sdk/completion.zsh.inc'; fi
+# Google Cloud SDK
+if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi
+if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
 eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
 
 alias dotfiles='git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 # bun completions
-[ -s "/home/adrian/.bun/_bun" ] && source "/home/adrian/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 # Checklist parallel checkout navigation
-alias za='cd /home/adrian/vedtak/checklist-a'
-alias zb='cd /home/adrian/vedtak/checklist-b'
-alias zc='cd /home/adrian/vedtak/checklist-c'
-alias zmain='cd /home/adrian/vedtak/checklist'
+alias za="cd $HOME/vedtak/checklist-a"
+alias zb="cd $HOME/vedtak/checklist-b"
+alias zc="cd $HOME/vedtak/checklist-c"
+alias zmain="cd $HOME/vedtak/checklist"
 
 # pnpm
-export PNPM_HOME="/home/adrian/.local/share/pnpm"
+if [[ "$OSTYPE" == darwin* ]]; then
+  export PNPM_HOME="$HOME/Library/pnpm"
+else
+  export PNPM_HOME="$HOME/.local/share/pnpm"
+fi
 case ":$PATH:" in
   *":$PNPM_HOME:"*) ;;
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
 
-alias codex-app="/home/adrian/apps/codex-port/run-codex.sh"
+alias codex-app="$HOME/apps/codex-port/run-codex.sh"
 
 # Google Drive browser opener
 # Usage: gd [path]  (defaults to current directory)
 unalias gd 2>/dev/null
 gd() {
-  local GDRIVE_ROOT="/home/adrian/gdrive"
+  local GDRIVE_ROOT="$HOME/gdrive"
   local RCLONE_REMOTE="vedtak-shared"
   local TEAM_DRIVE_ROOT_ID="0ANLilboyAAoHUk9PVA"
 
@@ -259,5 +269,6 @@ gd() {
   fi
 
   echo "Opening: $url"
-  xdg-open "$url"
+  if [[ "$OSTYPE" == darwin* ]]; then open "$url"; else xdg-open "$url"; fi
 }
+export PATH="$HOME/.local/bin:$PATH"
