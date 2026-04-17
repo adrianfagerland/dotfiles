@@ -80,7 +80,7 @@ alt-e = [
   'exec-and-forget /Users/adrian/.config/aerospace/scripts/sync_h_accordion_gap.sh off',
   'exec-and-forget /opt/homebrew/bin/sketchybar --trigger accordion_mode_off'
 ]
-alt-b = 'exec-and-forget open -na "Google Chrome"'
+alt-b = 'exec-and-forget open -n -a Helium'
 alt-shift-x = 'exec-and-forget pmset sleepnow'
 
 alt-enter = 'exec-and-forget open -na Ghostty'
