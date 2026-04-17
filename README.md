@@ -53,6 +53,11 @@ done
 for f in ~/dotfiles/.local/bin/*; do
   ln -sfn "$f" ~/.local/bin/$(basename "$f")
 done
+
+# Ghostty reads from ~/Library/Application Support/..., not ~/.config
+mkdir -p ~/Library/Application\ Support/com.mitchellh.ghostty
+ln -sfn ~/dotfiles/.config/ghostty/config \
+  ~/Library/Application\ Support/com.mitchellh.ghostty/config.ghostty
 ```
 
 ### 4. Install packages
@@ -118,8 +123,9 @@ Without these, SketchyBar falls back to an empty default bar.
 - **Dock**: System Settings → Desktop & Dock → *Automatically hide and show the Dock: on*, Size: minimum
 - **Accessibility** (Privacy & Security → Accessibility): enable AeroSpace, borders, Karabiner-Elements
 - **Karabiner driver**: on first launch, approve the kernel extension in Privacy & Security
-- **Ghostty**: set font to *MesloLGS Nerd Font* (required for powerlevel10k glyphs)
 - **Custom keyboard layout**: copy `~/dotfiles/custom_keyboard_layout` into `~/Library/Keyboard Layouts/`, then select it in Keyboard → Input Sources
+
+Ghostty's font (*MesloLGS Nerd Font*) and option-key behaviour (needed for Norwegian diacritics å/ø/æ via Karabiner's Right-Cmd bindings) are already set in `.config/ghostty/config` — no GUI step needed.
 
 ### 9. Generate SSH key and register with GitHub
 
