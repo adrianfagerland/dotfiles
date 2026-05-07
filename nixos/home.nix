@@ -511,6 +511,61 @@ in
     '';
   };
 
+  home.file.".local/bin/helium-warm" = {
+    executable = true;
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      if pgrep -u "$USER" -f '(^|/)helium([[:space:]]|$)' >/dev/null 2>&1; then
+        exit 0
+      fi
+
+      helium --no-startup-window >/tmp/helium-warm.log 2>&1 &
+      pid="$!"
+      sleep 2
+
+      if kill -0 "$pid" >/dev/null 2>&1; then
+        exit 0
+      fi
+
+      hyprctl dispatch exec "helium --new-window about:blank" >/dev/null 2>&1
+
+      for _ in {1..30}; do
+        addr="$(
+          hyprctl clients -j | jq -r '
+            .[]
+            | select((.class | ascii_downcase) == "helium")
+            | select(.title | test("about:blank|New Tab|Helium"))
+            | .address
+          ' | tail -n 1
+        )"
+
+        if [[ -n "$addr" ]]; then
+          hyprctl dispatch movetoworkspacesilent "special:helium,address:$addr" >/dev/null 2>&1 || true
+          exit 0
+        fi
+
+        sleep 0.1
+      done
+    '';
+  };
+
+  home.file.".local/bin/helium-open" = {
+    executable = true;
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      if ! pgrep -u "$USER" -f '(^|/)helium([[:space:]]|$)' >/dev/null 2>&1; then
+        helium-warm >/tmp/helium-warm.log 2>&1 &
+        sleep 0.5
+      fi
+
+      exec helium --new-window "$@"
+    '';
+  };
+
   programs.ghostty = {
     enable = true;
     settings = {
@@ -896,6 +951,7 @@ in
         "mako"
         "hyprpaper"
         "systemctl --user restart hypridle.service"
+        "helium-warm"
         "wl-paste --type text --watch cliphist store"
         "wl-paste --type image --watch cliphist store"
       ];
@@ -909,7 +965,7 @@ in
           "$mod, RETURN, exec, ghostty"
           "$mod SHIFT, RETURN, exec, alacritty"
           "$mod, Q, killactive,"
-          "$mod, B, exec, helium"
+          "$mod, B, exec, helium-open"
           "$mod SHIFT, B, exec, blueman-manager"
           "$mod, D, exec, rofi -show drun"
           "$mod, SPACE, exec, rofi -show combi -combi-modes drun,run"
