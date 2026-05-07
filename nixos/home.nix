@@ -608,6 +608,7 @@ in
       background-opacity = 1;
       cursor-style = "block";
       resize-overlay = "never";
+      shell-integration-features = "no-cursor";
     };
   };
 
