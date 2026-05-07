@@ -5,59 +5,6 @@ let
   } ''
     printf 'P6\n1 1\n255\n\0\0\0' > "$out"
   '';
-  codexElectronLibPath = pkgs.lib.makeLibraryPath (with pkgs; [
-    glib
-    gtk3
-    pango
-    cairo
-    gdk-pixbuf
-    atk
-    at-spi2-atk
-    at-spi2-core
-    nss
-    nspr
-    dbus
-    cups
-    expat
-    libdrm
-    mesa
-    libgbm
-    alsa-lib
-    libX11
-    libXcomposite
-    libXdamage
-    libXext
-    libXfixes
-    libXrandr
-    libxcb
-    libxkbcommon
-    libxcursor
-    libxi
-    libxtst
-    libxscrnsaver
-    libglvnd
-    systemd
-    wayland
-  ]);
-  codexRuntimeLibPath = pkgs.lib.makeLibraryPath (with pkgs; [
-    libxcrypt-legacy
-    stdenv.cc.cc.lib
-    zlib
-  ]);
-  codexLauncherPath = pkgs.lib.makeBinPath (with pkgs; [
-    bash
-    coreutils
-    curl
-    findutils
-    gawk
-    gnugrep
-    gnused
-    nodejs
-    procps
-    python3
-    systemd
-    xdg-utils
-  ]);
 in
 {
   home.username = "adrian";
@@ -127,6 +74,19 @@ in
       "x-scheme-handler/https" = [ "helium.desktop" ];
     };
   };
+
+  xdg.configFile."mimeapps.list".force = true;
+
+  home.activation.makeMimeAppsMutable = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    mimeapps="$HOME/.config/mimeapps.list"
+    if [ -L "$mimeapps" ]; then
+      tmp="$(${pkgs.coreutils}/bin/mktemp)"
+      ${pkgs.coreutils}/bin/cat "$mimeapps" > "$tmp"
+      ${pkgs.coreutils}/bin/rm "$mimeapps"
+      ${pkgs.coreutils}/bin/install -m 0644 "$tmp" "$mimeapps"
+      ${pkgs.coreutils}/bin/rm -f "$tmp"
+    fi
+  '';
 
   home.sessionVariables = {
     EDITOR = "nvim";
@@ -216,55 +176,6 @@ in
     rescan_delay = 5
     show_notifications = True
   '';
-
-  home.file.".local/bin/codex-desktop" = {
-    executable = true;
-    text = ''
-      #!/usr/bin/env bash
-      set -euo pipefail
-
-      exec "$HOME/.local/share/codex-desktop/codex-app/start.sh" "$@"
-    '';
-  };
-
-  home.activation.patchCodexDesktop = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    install_dir="$HOME/.local/share/codex-desktop/codex-app"
-    if [ -d "$install_dir" ]; then
-      start="$install_dir/start.sh"
-      if [ -f "$start" ]; then
-        chmod u+w "$start" 2>/dev/null || true
-        ${pkgs.gnused}/bin/sed -i '1s|^#!/bin/bash$|#!${pkgs.bash}/bin/bash|' "$start"
-        ${pkgs.gnused}/bin/sed -i '/^# NixOS Electron library path /,+1d;/^# NixOS launcher PATH /,+1d' "$start"
-        ${pkgs.gnused}/bin/sed -i '2i# NixOS Electron library path for dlopen()ed GL/EGL libraries.\nexport LD_LIBRARY_PATH="${codexElectronLibPath}:${codexRuntimeLibPath}:''${LD_LIBRARY_PATH:-}"\n# NixOS launcher PATH for generated helper scripts.\nexport PATH="${codexLauncherPath}:$PATH"' "$start"
-      fi
-
-      if [ -f "$install_dir/electron" ]; then
-        ${pkgs.patchelf}/bin/patchelf --set-interpreter "$(${pkgs.coreutils}/bin/cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
-          --set-rpath "$install_dir:${codexElectronLibPath}" \
-          "$install_dir/electron" 2>/dev/null || true
-      fi
-
-      for helper in chrome_crashpad_handler chrome-sandbox; do
-        if [ -f "$install_dir/$helper" ]; then
-          ${pkgs.patchelf}/bin/patchelf --set-interpreter "$(${pkgs.coreutils}/bin/cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
-            "$install_dir/$helper" 2>/dev/null || true
-        fi
-      done
-
-      ${pkgs.findutils}/bin/find "$install_dir" -maxdepth 1 -name "*.so*" -type f -print0 |
-        while IFS= read -r -d "" so; do
-          ${pkgs.patchelf}/bin/patchelf --set-rpath "${codexElectronLibPath}" "$so" 2>/dev/null || true
-        done
-    fi
-  '';
-
-  xdg.desktopEntries.codex-desktop = {
-    name = "Codex Desktop";
-    genericName = "AI coding assistant";
-    exec = "codex-desktop";
-    terminal = false;
-    categories = [ "Development" ];
-  };
 
   home.file.".local/bin/hypr-hy3-toggle-split" = {
     executable = true;
