@@ -115,10 +115,15 @@ in
     SUBSYSTEM=="power_supply", ATTR{type}=="Mains", RUN+="${pkgs.systemd}/bin/systemctl --no-block start power-profile-auto.service"
   '';
 
+  virtualisation.docker = {
+    enable = true;
+    enableOnBoot = true;
+  };
+
   users.users.adrian = {
     isNormalUser = true;
     description = "Adrian";
-    extraGroups = [ "wheel" "networkmanager" "audio" "video" "input" ];
+    extraGroups = [ "wheel" "networkmanager" "audio" "video" "input" "docker" ];
     shell = pkgs.zsh;
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMkyIDP02Cr7ZLEyyyJWFq6G7mwfs7JYr1siqYh3ev+q adrian@Mac.lan"
