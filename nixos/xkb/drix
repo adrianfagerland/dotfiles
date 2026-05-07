@@ -1,0 +1,12 @@
+default partial alphanumeric_keys modifier_keys
+xkb_symbols "basic" {
+    include "us(basic)"
+
+    name[Group1] = "English (Drix)";
+
+    include "level3(ralt_switch)"
+
+    key <AC01> { [ a, A, aring, Aring ] };
+    key <AD09> { [ o, O, oslash, Ooblique ] };
+    key <AD03> { [ e, E, ae, AE ] };
+};
