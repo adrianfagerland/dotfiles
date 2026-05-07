@@ -56,6 +56,7 @@ in
   hardware.cpu.intel.updateMicrocode = true;
 
   powerManagement.enable = true;
+  zramSwap.enable = true;
   services.power-profiles-daemon.enable = true;
   services.thermald.enable = true;
   services.upower.enable = true;
@@ -119,6 +120,9 @@ in
     description = "Adrian";
     extraGroups = [ "wheel" "networkmanager" "audio" "video" "input" ];
     shell = pkgs.zsh;
+    openssh.authorizedKeys.keys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMkyIDP02Cr7ZLEyyyJWFq6G7mwfs7JYr1siqYh3ev+q adrian@Mac.lan"
+    ];
   };
 
   security.sudo.wheelNeedsPassword = true;
