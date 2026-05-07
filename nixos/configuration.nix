@@ -41,6 +41,10 @@ in
 
   networking.hostName = "nixos";
   networking.networkmanager.enable = true;
+  networking.firewall = {
+    enable = true;
+    allowedTCPPorts = [ 22 ];
+  };
 
   time.timeZone = "Europe/Oslo";
   i18n.defaultLocale = "en_US.UTF-8";
@@ -167,7 +171,13 @@ in
 
   services.openssh = {
     enable = true;
-    settings.PasswordAuthentication = true;
+    openFirewall = true;
+    settings = {
+      PasswordAuthentication = false;
+      KbdInteractiveAuthentication = false;
+      PermitRootLogin = "no";
+      X11Forwarding = false;
+    };
   };
 
   environment.sessionVariables = {
