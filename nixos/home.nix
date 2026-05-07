@@ -170,6 +170,7 @@ in
     };
     initContent = ''
       bindkey '`' autosuggest-accept
+      bindkey '^[d' kill-word
       bindkey '^[[3;5~' kill-word
       bindkey '^[[3;5u' kill-word
 
@@ -610,7 +611,8 @@ in
       background-opacity = 1;
       cursor-style = "block";
       keybind = [
-        "ctrl+delete=csi:3;5~"
+        "ctrl+backspace=text:\\x17"
+        "ctrl+delete=esc:d"
       ];
       resize-overlay = "never";
       shell-integration-features = "no-cursor";
