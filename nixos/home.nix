@@ -170,9 +170,6 @@ in
     };
     initContent = ''
       bindkey '`' autosuggest-accept
-      bindkey '^[d' kill-word
-      bindkey '^[[3;5~' kill-word
-      bindkey '^[[3;5u' kill-word
 
       if [[ -n "$XDG_RUNTIME_DIR" ]]; then
         export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
@@ -612,7 +609,6 @@ in
       cursor-style = "block";
       keybind = [
         "ctrl+backspace=text:\\x17"
-        "ctrl+delete=esc:d"
       ];
       resize-overlay = "never";
       shell-integration-features = "no-cursor";
