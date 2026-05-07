@@ -606,6 +606,7 @@ in
       font-family = "MesloLGS Nerd Font";
       background = "#000000";
       background-opacity = 1;
+      cursor-style = "block";
       resize-overlay = "never";
     };
   };
