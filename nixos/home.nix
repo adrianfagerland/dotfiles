@@ -574,7 +574,7 @@ in
       background-opacity = 1;
       cursor-style = "block";
       keybind = [
-        "ctrl+backspace=text:\\x17"
+        "ctrl+backspace=text:\\x1bb"
       ];
       resize-overlay = "never";
       shell-integration-features = "no-cursor";
@@ -588,7 +588,7 @@ in
         {
           key = "Back";
           mods = "Control";
-          chars = "\\u0017";
+          chars = "\\u001bb";
         }
         {
           key = "Return";
@@ -964,6 +964,7 @@ in
         [
           "$mod, RETURN, exec, ghostty"
           "$mod SHIFT, RETURN, exec, alacritty"
+          "$mod, O, exec, ghostty -e yazi"
           "$mod, Q, killactive,"
           "$mod, B, exec, helium-open"
           "$mod SHIFT, B, exec, blueman-manager"

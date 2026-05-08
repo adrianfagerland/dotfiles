@@ -218,6 +218,7 @@ in
 
     ghostty
     alacritty
+    yazi
     heliumBrowser
     rofi
     waybar
