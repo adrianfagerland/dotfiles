@@ -896,11 +896,11 @@ in
           "snappy, 0.15, 0.85, 0.20, 1.00"
         ];
         animation = [
-          "windows, 1, 18, snappy, popin 80%"
-          "windowsMove, 1, 21, snappy"
-          "windowsOut, 1, 12, snappy, popin 80%"
-          "border, 1, 18, snappy"
-          "fade, 1, 12, snappy"
+          "windows, 1, 12, snappy, popin 80%"
+          "windowsMove, 1, 14, snappy"
+          "windowsOut, 1, 8, snappy, popin 80%"
+          "border, 1, 12, snappy"
+          "fade, 1, 8, snappy"
           "workspaces, 0"
         ];
       };
