@@ -109,6 +109,10 @@ in
     enableCompletion = true;
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
+    oh-my-zsh = {
+      enable = true;
+      plugins = [ "git" ];
+    };
     shellAliases = {
       spt = "spotify_player";
       venv = "source .venv/bin/activate";
