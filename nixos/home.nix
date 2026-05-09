@@ -706,6 +706,157 @@ in
     };
   };
 
+  home.file.".local/bin/battery-watch" = {
+    executable = true;
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      low=15
+      critical=10
+      suspend_at=5
+      interval=30
+      state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/battery-watch"
+      state_file="$state_dir/notified"
+
+      ${pkgs.coreutils}/bin/mkdir -p "$state_dir"
+
+      find_battery() {
+        for supply in /sys/class/power_supply/*; do
+          [[ -r "$supply/type" ]] || continue
+          read -r type < "$supply/type"
+          if [[ "$type" == "Battery" ]]; then
+            printf '%s\n' "$supply"
+            return 0
+          fi
+        done
+        return 1
+      }
+
+      on_ac_power() {
+        for supply in /sys/class/power_supply/*; do
+          [[ -r "$supply/type" && -r "$supply/online" ]] || continue
+          read -r type < "$supply/type"
+          if [[ "$type" == "Mains" ]]; then
+            read -r online < "$supply/online"
+            [[ "$online" == "1" ]] && return 0
+          fi
+        done
+        return 1
+      }
+
+      battery_capacity() {
+        battery="$(find_battery)" || return 1
+        read -r capacity < "$battery/capacity"
+        printf '%s\n' "$capacity"
+      }
+
+      battery_status() {
+        battery="$(find_battery)" || return 1
+        if [[ -r "$battery/status" ]]; then
+          read -r status < "$battery/status"
+        else
+          status="Unknown"
+        fi
+        printf '%s\n' "$status"
+      }
+
+      notify() {
+        ${pkgs.libnotify}/bin/notify-send "$@" >/dev/null 2>&1 || true
+      }
+
+      current_stage() {
+        if [[ -r "$state_file" ]]; then
+          read -r stage < "$state_file" || stage="none"
+          printf '%s\n' "$stage"
+        else
+          printf 'none\n'
+        fi
+      }
+
+      set_stage() {
+        printf '%s\n' "$1" > "$state_file"
+      }
+
+      should_act() {
+        on_ac_power && return 1
+        status="$(battery_status || true)"
+        [[ "$status" == "Charging" || "$status" == "Full" ]] && return 1
+        return 0
+      }
+
+      while true; do
+        capacity="$(battery_capacity || true)"
+
+        if [[ -z "$capacity" || ! "$capacity" =~ ^[0-9]+$ ]]; then
+          ${pkgs.coreutils}/bin/sleep "$interval"
+          continue
+        fi
+
+        if ! should_act || (( capacity > low )); then
+          set_stage none
+          ${pkgs.coreutils}/bin/sleep "$interval"
+          continue
+        fi
+
+        stage="$(current_stage)"
+
+        if (( capacity <= suspend_at )); then
+          if [[ "$stage" != "suspend" ]]; then
+            notify -u critical -t 0 \
+              "Battery critically low" \
+              "Battery at $capacity%. Suspending in 30 seconds unless power is connected."
+            set_stage suspend
+          fi
+
+          ${pkgs.coreutils}/bin/sleep 30
+          capacity_after="$(battery_capacity || echo 100)"
+
+          if should_act && [[ "$capacity_after" =~ ^[0-9]+$ ]] && (( capacity_after <= suspend_at )); then
+            notify -u critical -t 5000 \
+              "Suspending now" \
+              "Battery still at $capacity_after%."
+            ${pkgs.systemd}/bin/systemctl suspend || true
+          fi
+        elif (( capacity <= critical )); then
+          if [[ "$stage" != "critical" && "$stage" != "suspend" ]]; then
+            notify -u critical -t 0 \
+              "Battery critical" \
+              "Battery at $capacity%. Connect power soon."
+            set_stage critical
+          fi
+
+          ${pkgs.coreutils}/bin/sleep "$interval"
+        else
+          if [[ "$stage" == "none" ]]; then
+            notify -u normal -t 15000 \
+              "Battery low" \
+              "Battery at $capacity%."
+            set_stage low
+          fi
+
+          ${pkgs.coreutils}/bin/sleep "$interval"
+        fi
+      done
+    '';
+  };
+
+  systemd.user.services.battery-watch = {
+    Unit = {
+      Description = "Warn and suspend before the battery is empty";
+      After = [ "graphical-session.target" ];
+    };
+
+    Service = {
+      Type = "simple";
+      ExecStart = "%h/.local/bin/battery-watch";
+      Restart = "always";
+      RestartSec = "10s";
+    };
+
+    Install.WantedBy = [ "default.target" ];
+  };
+
   programs.waybar = {
     enable = true;
     settings.mainBar = {

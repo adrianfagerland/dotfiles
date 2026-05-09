@@ -59,7 +59,15 @@ in
   zramSwap.enable = true;
   services.power-profiles-daemon.enable = true;
   services.thermald.enable = true;
-  services.upower.enable = true;
+  services.upower = {
+    enable = true;
+    usePercentageForPolicy = true;
+    percentageLow = 15;
+    percentageCritical = 8;
+    percentageAction = 5;
+    criticalPowerAction = "Suspend";
+    allowRiskyCriticalPowerAction = true;
+  };
   services.fwupd.enable = true;
   services.fstrim.enable = true;
 
