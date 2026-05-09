@@ -578,7 +578,7 @@ in
       background-opacity = 1;
       cursor-style = "block";
       keybind = [
-        "ctrl+backspace=text:\\x1bb"
+        "ctrl+backspace=text:\\x17"
       ];
       resize-overlay = "never";
       shell-integration-features = "no-cursor";
