@@ -134,6 +134,8 @@ in
     };
     initContent = ''
       bindkey '`' autosuggest-accept
+      bindkey -M viins '^[b' vi-backward-word
+      bindkey -M viins '^[f' vi-forward-word
 
       if [[ -n "$XDG_RUNTIME_DIR" ]]; then
         export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
@@ -784,15 +786,16 @@ in
   programs.ghostty = {
     enable = true;
     settings = {
-      font-family = "MesloLGS Nerd Font";
       background = "#000000";
-      background-opacity = 1;
       cursor-style = "block";
+      shell-integration-features = "no-cursor";
       keybind = [
+        "ctrl+up=csi:A"
+        "ctrl+down=csi:B"
+        "ctrl+left=text:\\x1bb"
+        "ctrl+right=text:\\x1bwa"
         "ctrl+backspace=text:\\x17"
       ];
-      resize-overlay = "never";
-      shell-integration-features = "no-cursor";
     };
   };
 

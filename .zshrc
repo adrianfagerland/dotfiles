@@ -145,6 +145,8 @@ alias venv='source .venv/bin/activate'
 # . "/home/adrian/.deno/env"
 
 bindkey '`' autosuggest-accept
+bindkey -M viins '^[b' vi-backward-word
+bindkey -M viins '^[f' vi-forward-word
 
 alias v='vim'
 if [[ "$OSTYPE" == darwin* ]]; then

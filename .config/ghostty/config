@@ -1,2 +1,8 @@
-font-family = "MesloLGS Nerd Font"
-macos-option-as-alt = false
+background = #000000
+cursor-style = block
+shell-integration-features = no-cursor
+keybind = ctrl+up=csi:A
+keybind = ctrl+down=csi:B
+keybind = ctrl+left=text:\x1bb
+keybind = ctrl+right=text:\x1bwa
+keybind = ctrl+backspace=text:\x17
