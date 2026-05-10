@@ -204,9 +204,11 @@ in
       external_mode="3440x1440@49.99"
       mirror_mode="1920x1080@60"
       external_right_pos="1920x0"
+      laptop_right_pos="3440x0"
       state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/hypr-projector"
       state_file="$state_dir/mode"
-      extend_label="Extend - external right"
+      extend_right_label="Extend - external right"
+      extend_left_label="Extend - external left"
       mirror_label="Mirror"
       laptop_label="Laptop only"
       external_label="External only"
@@ -265,7 +267,18 @@ in
         fi
 
         hyprctl --batch "keyword monitor $laptop,$laptop_mode,0x0,1 ; keyword monitor $external,$external_mode,$external_right_pos,1" >/dev/null
-        notify_mode "extend" "External screen to the right"
+        notify_mode "extend-right" "External screen to the right"
+      }
+
+      apply_extend_left() {
+        if ! external_connected; then
+          notify-send -u normal -t 2200 "Projection" "External display is not connected" >/dev/null 2>&1 || true
+          apply_laptop
+          return
+        fi
+
+        hyprctl --batch "keyword monitor $external,$external_mode,0x0,1 ; keyword monitor $laptop,$laptop_mode,$laptop_right_pos,1" >/dev/null
+        notify_mode "extend-left" "External screen to the left"
       }
 
       apply_mirror() {
@@ -315,15 +328,23 @@ in
           return
         fi
 
-        echo "extend"
+        local laptop_x external_x
+        laptop_x="$(jq -r '.x // 0' <<< "$laptop_row")"
+        external_x="$(jq -r '.x // 0' <<< "$external_row")"
+        if (( external_x < laptop_x )); then
+          echo "extend-left"
+        else
+          echo "extend-right"
+        fi
       }
 
       selected_row_for_mode() {
         case "$1" in
-          extend) echo 0 ;;
-          mirror) echo 1 ;;
-          laptop) echo 2 ;;
-          external) echo 3 ;;
+          extend-right) echo 0 ;;
+          extend-left) echo 1 ;;
+          mirror) echo 2 ;;
+          laptop) echo 3 ;;
+          external) echo 4 ;;
           *) echo 0 ;;
         esac
       }
@@ -340,12 +361,13 @@ in
         fi
 
         choice="$(
-          printf '%s\n' "$extend_label" "$mirror_label" "$laptop_label" "$external_label" \
+          printf '%s\n' "$extend_right_label" "$extend_left_label" "$mirror_label" "$laptop_label" "$external_label" \
             | rofi -dmenu -i -p "Display" -mesg "Current: $current | $ext_status" -selected-row "$selected"
         )"
 
         case "$choice" in
-          "$extend_label") apply_extend ;;
+          "$extend_right_label") apply_extend ;;
+          "$extend_left_label") apply_extend_left ;;
           "$mirror_label") apply_mirror ;;
           "$laptop_label") apply_laptop ;;
           "$external_label") apply_external ;;
@@ -357,7 +379,8 @@ in
         case "$(current_mode)" in
           laptop) apply_mirror ;;
           mirror) apply_extend ;;
-          extend) apply_external ;;
+          extend-right) apply_extend_left ;;
+          extend-left) apply_external ;;
           external) apply_laptop ;;
           *) apply_extend ;;
         esac
@@ -367,12 +390,13 @@ in
         menu|rofi|choose) rofi_menu ;;
         laptop|internal) apply_laptop ;;
         external|second) apply_external ;;
-        extend|right) apply_extend ;;
+        extend|right|extend-right) apply_extend ;;
+        left|extend-left) apply_extend_left ;;
         mirror|duplicate) apply_mirror ;;
         cycle|toggle) cycle_mode ;;
         current) current_mode ;;
         *)
-          echo "usage: hypr-projector [menu|extend|mirror|laptop|external|cycle|current]" >&2
+          echo "usage: hypr-projector [menu|extend|extend-left|mirror|laptop|external|cycle|current]" >&2
           exit 2
           ;;
       esac
