@@ -219,6 +219,7 @@ in
     unzip
     ripgrep
     fd
+    google-cloud-sdk
     btop
     pciutils
     powertop
