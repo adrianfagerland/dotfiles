@@ -999,6 +999,9 @@ in
       plugin = "${pkgs.hyprlandPlugins.hy3}/lib/libhy3.so";
 
       monitor = [
+        # MSI MP341CQ advertises a 4K preferred mode, but the panel is 3440x1440 ultrawide.
+        "HDMI-A-1,3440x1440@49.99,1920x0,1"
+        "eDP-1,1920x1080@60,0x0,1"
         ",preferred,auto,1"
       ];
 
@@ -1022,6 +1025,13 @@ in
           natural_scroll = true;
         };
       };
+
+      device = [
+        {
+          name = "logitech-usb-receiver-mouse";
+          sensitivity = -0.4;
+        }
+      ];
 
       general = {
         layout = "hy3";
