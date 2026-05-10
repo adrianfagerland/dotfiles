@@ -206,6 +206,10 @@ in
       external_right_pos="1920x0"
       state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/hypr-projector"
       state_file="$state_dir/mode"
+      extend_label="Extend - external right"
+      mirror_label="Mirror"
+      laptop_label="Laptop only"
+      external_label="External only"
 
       remember_mode() {
         mkdir -p "$state_dir"
@@ -219,48 +223,60 @@ in
         notify-send -u low -t 1800 "Projection: $mode" "$body" >/dev/null 2>&1 || true
       }
 
-      external_present() {
+      external_connected() {
         hyprctl monitors all -j | jq -e --arg name "$external" 'any(.[]; .name == $name)' >/dev/null
+      }
+
+      move_all_workspaces_to_monitor() {
+        local target="$1"
+
+        hyprctl workspaces -j \
+          | jq -r '.[].id' \
+          | while read -r workspace; do
+              hyprctl dispatch moveworkspacetomonitor "$workspace" "$target" >/dev/null 2>&1 || true
+            done
       }
 
       apply_laptop() {
         hyprctl keyword monitor "$laptop,$laptop_mode,0x0,1" >/dev/null
+        move_all_workspaces_to_monitor "$laptop"
         hyprctl keyword monitor "$external,disable" >/dev/null 2>&1 || true
         notify_mode "laptop" "Laptop screen only"
       }
 
       apply_external() {
-        if ! external_present; then
+        if ! external_connected; then
           notify-send -u normal -t 2200 "Projection" "External display is not connected" >/dev/null 2>&1 || true
           apply_laptop
           return
         fi
 
         hyprctl keyword monitor "$external,$external_mode,0x0,1" >/dev/null
+        move_all_workspaces_to_monitor "$external"
         hyprctl keyword monitor "$laptop,disable" >/dev/null
         notify_mode "external" "External screen only"
       }
 
       apply_extend() {
-        if ! external_present; then
+        if ! external_connected; then
           notify-send -u normal -t 2200 "Projection" "External display is not connected" >/dev/null 2>&1 || true
           apply_laptop
           return
         fi
 
-        hyprctl keyword monitor "$laptop,$laptop_mode,0x0,1" >/dev/null
-        hyprctl keyword monitor "$external,$external_mode,$external_right_pos,1" >/dev/null
+        hyprctl --batch "keyword monitor $laptop,$laptop_mode,0x0,1 ; keyword monitor $external,$external_mode,$external_right_pos,1" >/dev/null
         notify_mode "extend" "External screen to the right"
       }
 
       apply_mirror() {
-        if ! external_present; then
+        if ! external_connected; then
           notify-send -u normal -t 2200 "Projection" "External display is not connected" >/dev/null 2>&1 || true
           apply_laptop
           return
         fi
 
         hyprctl keyword monitor "$laptop,$laptop_mode,0x0,1" >/dev/null
+        move_all_workspaces_to_monitor "$laptop"
         hyprctl keyword monitor "$external,$mirror_mode,0x0,1,mirror,$laptop" >/dev/null
         notify_mode "mirror" "Duplicating laptop screen"
       }
@@ -302,6 +318,41 @@ in
         echo "extend"
       }
 
+      selected_row_for_mode() {
+        case "$1" in
+          extend) echo 0 ;;
+          mirror) echo 1 ;;
+          laptop) echo 2 ;;
+          external) echo 3 ;;
+          *) echo 0 ;;
+        esac
+      }
+
+      rofi_menu() {
+        local current ext_status selected choice
+
+        current="$(current_mode)"
+        selected="$(selected_row_for_mode "$current")"
+        if external_connected; then
+          ext_status="$external connected"
+        else
+          ext_status="$external not connected"
+        fi
+
+        choice="$(
+          printf '%s\n' "$extend_label" "$mirror_label" "$laptop_label" "$external_label" \
+            | rofi -dmenu -i -p "Display" -mesg "Current: $current | $ext_status" -selected-row "$selected"
+        )"
+
+        case "$choice" in
+          "$extend_label") apply_extend ;;
+          "$mirror_label") apply_mirror ;;
+          "$laptop_label") apply_laptop ;;
+          "$external_label") apply_external ;;
+          "") exit 0 ;;
+        esac
+      }
+
       cycle_mode() {
         case "$(current_mode)" in
           laptop) apply_mirror ;;
@@ -312,7 +363,8 @@ in
         esac
       }
 
-      case "''${1:-cycle}" in
+      case "''${1:-menu}" in
+        menu|rofi|choose) rofi_menu ;;
         laptop|internal) apply_laptop ;;
         external|second) apply_external ;;
         extend|right) apply_extend ;;
@@ -320,7 +372,7 @@ in
         cycle|toggle) cycle_mode ;;
         current) current_mode ;;
         *)
-          echo "usage: hypr-projector [cycle|laptop|external|extend|mirror|current]" >&2
+          echo "usage: hypr-projector [menu|extend|mirror|laptop|external|cycle|current]" >&2
           exit 2
           ;;
       esac
@@ -1307,8 +1359,8 @@ in
           ", Print, exec, grim -g \"$(slurp)\" - | wl-copy"
           "$mod, Print, exec, grim - | wl-copy"
           "$mod, V, exec, push-to-talk-toggle-wayland"
-          "$mod, P, exec, hypr-projector cycle"
-          ", XF86Display, exec, hypr-projector cycle"
+          "$mod, P, exec, hypr-projector menu"
+          ", XF86Display, exec, hypr-projector menu"
         ]
         ++ (
           builtins.concatLists (builtins.genList
