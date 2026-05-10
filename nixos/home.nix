@@ -192,6 +192,141 @@ in
     '';
   };
 
+  home.file.".local/bin/hypr-projector" = {
+    executable = true;
+    text = ''
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      laptop="eDP-1"
+      external="HDMI-A-1"
+      laptop_mode="1920x1080@60"
+      external_mode="3440x1440@49.99"
+      mirror_mode="1920x1080@60"
+      external_right_pos="1920x0"
+      state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/hypr-projector"
+      state_file="$state_dir/mode"
+
+      remember_mode() {
+        mkdir -p "$state_dir"
+        printf '%s\n' "$1" > "$state_file"
+      }
+
+      notify_mode() {
+        local mode="$1"
+        local body="$2"
+        remember_mode "$mode"
+        notify-send -u low -t 1800 "Projection: $mode" "$body" >/dev/null 2>&1 || true
+      }
+
+      external_present() {
+        hyprctl monitors all -j | jq -e --arg name "$external" 'any(.[]; .name == $name)' >/dev/null
+      }
+
+      apply_laptop() {
+        hyprctl keyword monitor "$laptop,$laptop_mode,0x0,1" >/dev/null
+        hyprctl keyword monitor "$external,disable" >/dev/null 2>&1 || true
+        notify_mode "laptop" "Laptop screen only"
+      }
+
+      apply_external() {
+        if ! external_present; then
+          notify-send -u normal -t 2200 "Projection" "External display is not connected" >/dev/null 2>&1 || true
+          apply_laptop
+          return
+        fi
+
+        hyprctl keyword monitor "$external,$external_mode,0x0,1" >/dev/null
+        hyprctl keyword monitor "$laptop,disable" >/dev/null
+        notify_mode "external" "External screen only"
+      }
+
+      apply_extend() {
+        if ! external_present; then
+          notify-send -u normal -t 2200 "Projection" "External display is not connected" >/dev/null 2>&1 || true
+          apply_laptop
+          return
+        fi
+
+        hyprctl keyword monitor "$laptop,$laptop_mode,0x0,1" >/dev/null
+        hyprctl keyword monitor "$external,$external_mode,$external_right_pos,1" >/dev/null
+        notify_mode "extend" "External screen to the right"
+      }
+
+      apply_mirror() {
+        if ! external_present; then
+          notify-send -u normal -t 2200 "Projection" "External display is not connected" >/dev/null 2>&1 || true
+          apply_laptop
+          return
+        fi
+
+        hyprctl keyword monitor "$laptop,$laptop_mode,0x0,1" >/dev/null
+        hyprctl keyword monitor "$external,$mirror_mode,0x0,1,mirror,$laptop" >/dev/null
+        notify_mode "mirror" "Duplicating laptop screen"
+      }
+
+      current_mode() {
+        local monitors laptop_row external_row mirror_of laptop_disabled external_disabled
+        monitors="$(hyprctl monitors all -j)"
+        laptop_row="$(jq -c --arg name "$laptop" '.[] | select(.name == $name)' <<< "$monitors" | head -n1)"
+        external_row="$(jq -c --arg name "$external" '.[] | select(.name == $name)' <<< "$monitors" | head -n1)"
+
+        if [[ -z "$external_row" ]]; then
+          echo "laptop"
+          return
+        fi
+
+        external_disabled="$(jq -r '.disabled // false' <<< "$external_row")"
+        if [[ "$external_disabled" == "true" ]]; then
+          echo "laptop"
+          return
+        fi
+
+        if [[ -z "$laptop_row" ]]; then
+          echo "external"
+          return
+        fi
+
+        laptop_disabled="$(jq -r '.disabled // false' <<< "$laptop_row")"
+        if [[ "$laptop_disabled" == "true" ]]; then
+          echo "external"
+          return
+        fi
+
+        mirror_of="$(jq -r '.mirrorOf // "none"' <<< "$external_row")"
+        if [[ "$mirror_of" != "none" ]]; then
+          echo "mirror"
+          return
+        fi
+
+        echo "extend"
+      }
+
+      cycle_mode() {
+        case "$(current_mode)" in
+          laptop) apply_mirror ;;
+          mirror) apply_extend ;;
+          extend) apply_external ;;
+          external) apply_laptop ;;
+          *) apply_extend ;;
+        esac
+      }
+
+      case "''${1:-cycle}" in
+        laptop|internal) apply_laptop ;;
+        external|second) apply_external ;;
+        extend|right) apply_extend ;;
+        mirror|duplicate) apply_mirror ;;
+        cycle|toggle) cycle_mode ;;
+        current) current_mode ;;
+        *)
+          echo "usage: hypr-projector [cycle|laptop|external|extend|mirror|current]" >&2
+          exit 2
+          ;;
+      esac
+    '';
+  };
+
   home.file.".local/bin/hypr-i3-focus" = {
     executable = true;
     text = ''
@@ -999,9 +1134,9 @@ in
       plugin = "${pkgs.hyprlandPlugins.hy3}/lib/libhy3.so";
 
       monitor = [
+        "eDP-1,1920x1080@60,0x0,1"
         # MSI MP341CQ advertises a 4K preferred mode, but the panel is 3440x1440 ultrawide.
         "HDMI-A-1,3440x1440@49.99,1920x0,1"
-        "eDP-1,1920x1080@60,0x0,1"
         ",preferred,auto,1"
       ];
 
@@ -1172,6 +1307,8 @@ in
           ", Print, exec, grim -g \"$(slurp)\" - | wl-copy"
           "$mod, Print, exec, grim - | wl-copy"
           "$mod, V, exec, push-to-talk-toggle-wayland"
+          "$mod, P, exec, hypr-projector cycle"
+          ", XF86Display, exec, hypr-projector cycle"
         ]
         ++ (
           builtins.concatLists (builtins.genList
