@@ -50,6 +50,28 @@ sudo nixos-rebuild switch --flake .#nixos
 
 Commit `flake.lock` after testing.
 
+## Google Drive sync
+
+Home Manager creates an rclone remote stub for the Vedtak shared drive
+(`vedtak-shared`, team drive ID `0ANLilboyAAoHUk9PVA`), a `~/gdrive` folder, and
+a user timer that runs `rclone bisync` every two minutes.
+
+After a fresh install, authorize the remote once:
+
+```sh
+rclone config reconnect vedtak-shared:
+```
+
+Then either wait for the timer or run the first sync directly:
+
+```sh
+rclone-vedtak-gdrive-sync --resync
+```
+
+The automatic first run only performs `--resync` when `~/gdrive` is empty. If it
+is not empty, inspect the folder first and run the command above when the Drive
+side should be treated as the source of truth.
+
 ## Roll back
 
 Temporarily switch back:

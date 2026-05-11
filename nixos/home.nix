@@ -104,6 +104,219 @@ in
     "$HOME/.local/share/pnpm"
   ];
 
+  home.file.".local/bin/rclone-vedtak-gdrive-sync" = {
+    executable = true;
+    text = ''
+      #!${pkgs.bash}/bin/bash
+      set -euo pipefail
+
+      remote_name="vedtak-shared"
+      remote="$remote_name:"
+      local_dir="$HOME/gdrive"
+      state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/rclone/vedtak-gdrive"
+      initialized_file="$state_dir/initialized"
+      resync=0
+
+      usage() {
+        printf '%s\n' "usage: rclone-vedtak-gdrive-sync [--resync]"
+      }
+
+      case "''${1:-}" in
+        "") ;;
+        --resync) resync=1 ;;
+        -h|--help)
+          usage
+          exit 0
+          ;;
+        *)
+          usage >&2
+          exit 2
+          ;;
+      esac
+
+      ${pkgs.coreutils}/bin/mkdir -p "$local_dir" "$state_dir"
+
+      if ! ${pkgs.rclone}/bin/rclone config show "$remote_name" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q '^token = '; then
+        printf '%s\n' "rclone remote '$remote_name' is not authorized yet; run: rclone config reconnect $remote"
+        exit 0
+      fi
+
+      if [ "$resync" -eq 0 ] && [ ! -f "$initialized_file" ]; then
+        if [ -z "$(${pkgs.findutils}/bin/find "$local_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+          resync=1
+        else
+          printf '%s\n' "Refusing first bisync because $local_dir is not empty."
+          printf '%s\n' "Inspect it, then run 'rclone-vedtak-gdrive-sync --resync' if the Drive side should win."
+          exit 1
+        fi
+      fi
+
+      args=(
+        bisync
+        "$remote"
+        "$local_dir"
+        --create-empty-src-dirs
+        --conflict-resolve newer
+        --resilient
+        --recover
+        --no-update-dir-modtime
+      )
+
+      if [ "$resync" -eq 1 ]; then
+        args+=(--resync --resync-mode path1)
+      fi
+
+      ${pkgs.rclone}/bin/rclone "''${args[@]}"
+      ${pkgs.coreutils}/bin/touch "$initialized_file"
+    '';
+  };
+
+  home.activation.ensureVedtakGdriveRcloneRemote = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    rclone_config="$HOME/.config/rclone/rclone.conf"
+    ${pkgs.coreutils}/bin/mkdir -p "$HOME/.config/rclone" "$HOME/gdrive"
+
+    if ! ${pkgs.rclone}/bin/rclone config show vedtak-shared >/dev/null 2>&1; then
+      ${pkgs.coreutils}/bin/touch "$rclone_config"
+      ${pkgs.coreutils}/bin/chmod 0600 "$rclone_config"
+      if [ -s "$rclone_config" ]; then
+        ${pkgs.coreutils}/bin/printf '\n' >> "$rclone_config"
+      fi
+      ${pkgs.coreutils}/bin/cat >> "$rclone_config" <<'EOF'
+[vedtak-shared]
+type = drive
+scope = drive
+team_drive = 0ANLilboyAAoHUk9PVA
+EOF
+    fi
+  '';
+
+  systemd.user.services.rclone-vedtak-gdrive-bisync = {
+    Unit = {
+      Description = "Bisync Vedtak Google Drive to ~/gdrive";
+      Documentation = "https://rclone.org/bisync/";
+    };
+
+    Service = {
+      Type = "oneshot";
+      ExecStart = "%h/.local/bin/rclone-vedtak-gdrive-sync";
+    };
+  };
+
+  systemd.user.timers.rclone-vedtak-gdrive-bisync = {
+    Unit.Description = "Run Vedtak Google Drive bisync every two minutes";
+
+    Timer = {
+      OnActiveSec = "30s";
+      OnUnitActiveSec = "2min";
+      Unit = "rclone-vedtak-gdrive-bisync.service";
+      Persistent = true;
+    };
+
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  home.file.".local/bin/codex-node-repl" = {
+    executable = true;
+    text = ''
+      #!/usr/bin/env sh
+      set -eu
+
+      find_node_repl() {
+          if [ "''${CODEX_NODE_REPL_PATH:-}" != "" ] && [ -x "$CODEX_NODE_REPL_PATH" ]; then
+              printf '%s\n' "$CODEX_NODE_REPL_PATH"
+              return 0
+          fi
+
+          if [ "''${CODEX_ELECTRON_RESOURCES_PATH:-}" != "" ] && [ -x "$CODEX_ELECTRON_RESOURCES_PATH/node_repl" ]; then
+              printf '%s\n' "$CODEX_ELECTRON_RESOURCES_PATH/node_repl"
+              return 0
+          fi
+
+          for candidate in /nix/store/*codex-desktop*/opt/codex-desktop/resources/node_repl; do
+              if [ -x "$candidate" ]; then
+                  printf '%s\n' "$candidate"
+                  return 0
+              fi
+          done
+
+          return 1
+      }
+
+      find_loader() {
+          if [ "''${CODEX_NODE_REPL_LOADER:-}" != "" ] && [ -x "$CODEX_NODE_REPL_LOADER" ]; then
+              printf '%s\n' "$CODEX_NODE_REPL_LOADER"
+              return 0
+          fi
+
+          if command -v nix >/dev/null 2>&1; then
+              glibc_out="$(nix eval --raw nixpkgs#glibc.outPath 2>/dev/null || true)"
+              if [ "$glibc_out" != "" ] && [ -x "$glibc_out/lib64/ld-linux-x86-64.so.2" ]; then
+                  printf '%s\n' "$glibc_out/lib64/ld-linux-x86-64.so.2"
+                  return 0
+              fi
+          fi
+
+          for candidate in /nix/store/*glibc*/lib64/ld-linux-x86-64.so.2; do
+              if [ -x "$candidate" ]; then
+                  printf '%s\n' "$candidate"
+                  return 0
+              fi
+          done
+
+          return 1
+      }
+
+      node_repl="$(find_node_repl)" || {
+          printf '%s\n' "codex-node-repl: could not find Codex Desktop node_repl" >&2
+          exit 127
+      }
+
+      loader="$(find_loader)" || {
+          printf '%s\n' "codex-node-repl: could not find a glibc dynamic loader" >&2
+          exit 127
+      }
+
+      export CODEX_HOME="''${CODEX_HOME:-$HOME/.codex}"
+
+      exec "$loader" "$node_repl" "$@"
+    '';
+  };
+
+  home.activation.ensureCodexNodeReplMcp = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    codex_bin="${pkgs.codex}/bin/codex"
+    wrapper="$HOME/.local/bin/codex-node-repl"
+
+    if [ -x "$codex_bin" ] && [ -x "$wrapper" ]; then
+      "$codex_bin" mcp get node_repl >/dev/null 2>&1 ||
+        "$codex_bin" mcp add node_repl -- "$wrapper" >/dev/null 2>&1 ||
+        true
+    fi
+  '';
+
+  home.activation.patchCodexBrowserSkill = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    for browser_skill in "$HOME"/.codex/plugins/cache/openai-bundled/browser-use/*/skills/browser/SKILL.md; do
+      [ -f "$browser_skill" ] || continue
+
+      ${pkgs.coreutils}/bin/chmod u+w "$browser_skill" 2>/dev/null || true
+      ${pkgs.perl}/bin/perl -0pi -e 's#^description:.*$#description: "Browser automation for the Codex in-app browser. Use for @browser requests. Open this full SKILL.md before declaring Browser unavailable. Browser control uses local MCP server node_repl tool js directly; generic tool discovery may not show local MCP tools."#m' "$browser_skill"
+      if ! ${pkgs.gnugrep}/bin/grep -q 'Do not call `tool_search` to find `node_repl`' "$browser_skill"; then
+        ${pkgs.perl}/bin/perl -0pi -e 's#(Run browser setup code through the Node REPL `js` MCP tool\. In this environment the server is named `node_repl` and the execution tool is named `js`; a model-visible shorthand may appear as `mcp__node_repl__js`\. `js_reset` only clears state and is not the execution tool\.)#$1\n\nDo not call `tool_search` to find `node_repl`. Deferred app/tool discovery does not index local MCP tools reliably. First try the direct MCP callable (`node_repl` server, `js` tool, or `mcp__node_repl__js` shorthand if it is visible). Only after that direct callable fails should you say the Node REPL browser bridge is unavailable.#s' "$browser_skill"
+      fi
+
+      if ${pkgs.gnugrep}/bin/grep -q 'Use tool discovery for `node_repl js`' "$browser_skill"; then
+        ${pkgs.perl}/bin/perl -0pi -e 's#Run browser setup code through the Node REPL `js` tool. In this environment the callable tool id typically appears as `mcp__node_repl__js`; `js_reset` only clears state and is not the execution tool. Run this once per fresh `node_repl` session:#Run browser setup code through the Node REPL `js` MCP tool. In this environment the server is named `node_repl` and the execution tool is named `js`; a model-visible shorthand may appear as `mcp__node_repl__js`. `js_reset` only clears state and is not the execution tool. Run this once per fresh `node_repl` session:#g; s#- If `js_reset` is visible but `js` is not, do not conclude that `node_repl` is unusable. Use tool discovery for `node_repl js`, then `mcp__node_repl__js`, then `js`, then `node_repl js JavaScript execution`; run the bootstrap cell with the Node REPL `js` tool once it is exposed.#- If `js_reset` is visible but `js` is not, do not conclude that `node_repl` is unusable. Call the MCP tool directly using server `node_repl` and tool `js`, or the shorthand `mcp__node_repl__js` when that callable is visible. Do not use generic tool discovery as proof that `node_repl` is unavailable; local MCP tools may not be indexed there.#g; s#- If the Node REPL `js` execution tool is still unavailable after those searches, say that explicitly before choosing any fallback browser-control path.#- If a direct call to the Node REPL `js` execution tool fails because the tool is unavailable, say that explicitly before choosing any fallback browser-control path.#g' "$browser_skill"
+      fi
+      ${pkgs.perl}/bin/perl -0pi -e 's#Do not use generic tool discovery as proof that `node_repl` is unavailable; local MCP tools may not be indexed there\.#Do not call `tool_search` and do not use generic tool discovery as proof that `node_repl` is unavailable; local MCP tools may not be indexed there.#g' "$browser_skill"
+    done
+
+    for browser_manifest in "$HOME"/.codex/plugins/cache/openai-bundled/browser-use/*/.codex-plugin/plugin.json; do
+      [ -f "$browser_manifest" ] || continue
+
+      ${pkgs.coreutils}/bin/chmod u+w "$browser_manifest" 2>/dev/null || true
+      ${pkgs.perl}/bin/perl -0pi -e 'if (!/For \@browser requests, open and follow the full Browser SKILL\.md/) { s#("description": ".*?current in-app browser tab\.\\n\\n)#$1For @browser requests, open and follow the full Browser SKILL.md before declaring browser control unavailable. Browser control uses the local MCP server `node_repl` with tool `js`; call that MCP tool directly. Do not treat an empty generic tool discovery result as proof that local MCP browser control is unavailable.\\n\\n#s } s#"shortDescription": "[^"]*"#"shortDescription": "Control the in-app browser through node_repl/js"#; s#"longDescription": "[^"]*"#"longDescription": "Browser lets Codex open and control the in-app browser, mainly for local development pages and files. For @browser requests, Codex should read the full Browser skill and call local MCP server node_repl tool js directly. Do not call tool_search to find node_repl; generic tool discovery may not list local MCP tools. Use it to navigate, inspect, click, type, and take screenshots while testing pages inside Codex."#' "$browser_manifest"
+    done
+  '';
+
   programs.zsh = {
     enable = true;
     enableCompletion = true;
@@ -768,6 +981,135 @@ in
     '';
   };
 
+  home.file.".local/bin/hypr-google-workspace" = {
+    executable = true;
+    text = ''
+      #!${pkgs.bash}/bin/bash
+      set -euo pipefail
+
+      workspace="10"
+      gmail_url="https://mail.google.com/mail/u/0/#inbox"
+      chat_url="https://chat.google.com/"
+      attempts="''${GOOGLE_WORKSPACE_ATTEMPTS:-80}"
+      delay="''${GOOGLE_WORKSPACE_DELAY:-0.15}"
+
+      for _ in $(seq 1 "$attempts"); do
+        if hyprctl clients -j >/dev/null 2>&1; then
+          break
+        fi
+
+        sleep "$delay"
+      done
+
+      hyprctl clients -j >/dev/null 2>&1 || exit 0
+
+      current_workspace="$(hyprctl activeworkspace -j | jq -r '.id // empty' 2>/dev/null || true)"
+
+      helium_addresses() {
+        hyprctl clients -j | jq -r '
+          .[]
+          | select((.class | ascii_downcase) == "helium")
+          | .address
+        '
+      }
+
+      new_helium_after() {
+        local before="$1"
+
+        hyprctl clients -j | jq -r --arg before "$before" '
+          ($before | split("\n")) as $before_addresses
+          | .[]
+          | select((.class | ascii_downcase) == "helium")
+          | select(.address as $address | (($before_addresses | index($address)) | not))
+          | .address
+        ' | tail -n 1
+      }
+
+      find_on_workspace() {
+        local regex="$1"
+
+        hyprctl clients -j | jq -r --argjson ws "$workspace" --arg regex "$regex" '
+          .[]
+          | select((.class | ascii_downcase) == "helium")
+          | select(.workspace.id == $ws)
+          | select((.title // "") | test($regex; "i"))
+          | .address
+        ' | tail -n 1
+      }
+
+      launch_window() {
+        local url="$1"
+        local fallback_regex="$2"
+        local before addr
+
+        before="$(helium_addresses)"
+        hyprctl dispatch exec "[workspace $workspace silent] helium --new-window \"$url\"" >/dev/null
+
+        for _ in $(seq 1 "$attempts"); do
+          addr="$(new_helium_after "$before")"
+          if [ -n "$addr" ]; then
+            printf '%s\n' "$addr"
+            return 0
+          fi
+
+          sleep "$delay"
+        done
+
+        find_on_workspace "$fallback_regex"
+      }
+
+      move_tiled() {
+        local addr="$1"
+
+        [ -n "$addr" ] || return 0
+        hyprctl dispatch movetoworkspacesilent "$workspace,address:$addr" >/dev/null 2>&1 || true
+        hyprctl dispatch focuswindow "address:$addr" >/dev/null 2>&1 || true
+        hyprctl dispatch settiled >/dev/null 2>&1 || true
+      }
+
+      gmail_addr="$(find_on_workspace 'Gmail|Inbox|Mail')"
+      chat_addr="$(find_on_workspace '(^| - )Chat|Google Chat')"
+
+      if [ -z "$gmail_addr" ]; then
+        gmail_addr="$(launch_window "$gmail_url" 'Gmail|Inbox|Mail|Google Accounts')"
+      fi
+
+      if [ -z "$chat_addr" ]; then
+        chat_addr="$(launch_window "$chat_url" '(^| - )Chat|Google Chat|Google Accounts')"
+      fi
+
+      hyprctl dispatch workspace "$workspace" >/dev/null 2>&1 || true
+
+      move_tiled "$gmail_addr"
+      hyprctl dispatch layoutmsg preselect r >/dev/null 2>&1 || true
+      move_tiled "$chat_addr"
+
+      if [ -n "$gmail_addr" ]; then
+        hyprctl dispatch focuswindow "address:$gmail_addr" >/dev/null 2>&1 || true
+        hyprctl dispatch layoutmsg preselect r >/dev/null 2>&1 || true
+      fi
+
+      if [ -n "$current_workspace" ] && [ "$current_workspace" != "$workspace" ]; then
+        hyprctl dispatch workspace "$current_workspace" >/dev/null 2>&1 || true
+      fi
+    '';
+  };
+
+  systemd.user.services.hypr-google-workspace = {
+    Unit = {
+      Description = "Open Gmail and Google Chat on Hyprland workspace 10";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+
+    Service = {
+      Type = "oneshot";
+      ExecStart = "%h/.local/bin/hypr-google-workspace";
+    };
+
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
   home.file.".local/bin/helium-open" = {
     executable = true;
     text = ''
@@ -1331,6 +1673,7 @@ in
         "hyprpaper"
         "systemctl --user restart hypridle.service"
         "helium-warm"
+        "hypr-google-workspace"
         "wl-paste --type text --watch cliphist store"
         "wl-paste --type image --watch cliphist store"
       ];
