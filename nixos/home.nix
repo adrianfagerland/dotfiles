@@ -347,6 +347,11 @@ EOF
     };
     initContent = ''
       bindkey '`' autosuggest-accept
+      zmodload zsh/complist
+      zstyle ':completion:*' menu select
+      bindkey '^[[Z' reverse-menu-complete
+      bindkey -M viins '^[[Z' reverse-menu-complete
+      bindkey -M menuselect '^[[Z' reverse-menu-complete
       bindkey -M viins '^[b' vi-backward-word
       bindkey -M viins '^[f' vi-forward-word
 
