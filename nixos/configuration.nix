@@ -257,6 +257,7 @@ in
     bitwarden-cli
     rbw
     rofi-rbw
+    libreoffice
     libsecret
     seahorse
 
