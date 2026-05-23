@@ -85,6 +85,45 @@ in
   };
 
   xdg.configFile."mimeapps.list".force = true;
+  xdg.portal = {
+    enable = true;
+    extraPortals = with pkgs; [
+      xdg-desktop-portal-termfilechooser
+      xdg-desktop-portal-gtk
+      gnome-keyring
+    ];
+    config = {
+      common = {
+        default = [ "hyprland" "gtk" ];
+        "org.freedesktop.impl.portal.FileChooser" = [ "termfilechooser" ];
+        "org.freedesktop.impl.portal.Secret" = [ "gnome-keyring" ];
+      };
+      hyprland = {
+        default = [ "hyprland" "gtk" ];
+        "org.freedesktop.impl.portal.FileChooser" = [ "termfilechooser" ];
+        "org.freedesktop.impl.portal.Secret" = [ "gnome-keyring" ];
+      };
+    };
+  };
+  xdg.configFile."xdg-desktop-portal-termfilechooser/config".text = let
+    launcherDeps = pkgs.buildEnv {
+      name = "yazi-launcher-dependencies";
+      paths = with pkgs; [
+        bashInteractive
+        coreutils
+        gnused
+        yazi
+      ];
+    };
+  in ''
+    [filechooser]
+    env=PATH=${launcherDeps}/bin
+    env=TERMCMD=${pkgs.ghostty}/bin/ghostty -e
+    cmd=${pkgs.xdg-desktop-portal-termfilechooser}/share/xdg-desktop-portal-termfilechooser/yazi-wrapper.sh
+    default_dir=$HOME/Downloads
+    open_mode=suggested
+    save_mode=suggested
+  '';
 
   home.activation.makeMimeAppsMutable = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
     mimeapps="$HOME/.config/mimeapps.list"
@@ -105,6 +144,7 @@ in
     XCURSOR_SIZE = "24";
     HYPRCURSOR_SIZE = "24";
     GTK_THEME = "Adwaita:dark";
+    GTK_USE_PORTAL = "1";
   };
 
   home.sessionPath = [
@@ -1019,46 +1059,6 @@ EOF
     '';
   };
 
-  home.file.".local/bin/helium-warm" = {
-    executable = true;
-    text = ''
-      #!/usr/bin/env bash
-      set -euo pipefail
-
-      if pgrep -u "$USER" -f '(^|/)helium([[:space:]]|$)' >/dev/null 2>&1; then
-        exit 0
-      fi
-
-      helium --no-startup-window >/tmp/helium-warm.log 2>&1 &
-      pid="$!"
-      sleep 2
-
-      if kill -0 "$pid" >/dev/null 2>&1; then
-        exit 0
-      fi
-
-      hyprctl dispatch exec "helium --new-window about:blank" >/dev/null 2>&1
-
-      for _ in {1..30}; do
-        addr="$(
-          hyprctl clients -j | jq -r '
-            .[]
-            | select((.class | ascii_downcase) == "helium")
-            | select(.title | test("about:blank|New Tab|Helium"))
-            | .address
-          ' | tail -n 1
-        )"
-
-        if [[ -n "$addr" ]]; then
-          hyprctl dispatch movetoworkspacesilent "special:helium,address:$addr" >/dev/null 2>&1 || true
-          exit 0
-        fi
-
-        sleep 0.1
-      done
-    '';
-  };
-
   home.file.".local/bin/hypr-google-workspace" = {
     executable = true;
     text = ''
@@ -1193,11 +1193,6 @@ EOF
     text = ''
       #!/usr/bin/env bash
       set -euo pipefail
-
-      if ! pgrep -u "$USER" -f '(^|/)helium([[:space:]]|$)' >/dev/null 2>&1; then
-        helium-warm >/tmp/helium-warm.log 2>&1 &
-        sleep 0.5
-      fi
 
       exec helium --new-window "$@"
     '';
@@ -1750,7 +1745,6 @@ EOF
         "mako"
         "hyprpaper"
         "systemctl --user restart hypridle.service"
-        "helium-warm"
         "hypr-google-workspace"
         "wl-paste --type text --watch cliphist store"
         "wl-paste --type image --watch cliphist store"

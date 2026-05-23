@@ -2,7 +2,7 @@
 
 let
   heliumVersion = "0.12.1.1";
-  heliumBrowser = pkgs.appimageTools.wrapType2 rec {
+  heliumBrowserApp = pkgs.appimageTools.wrapType2 rec {
     pname = "helium";
     version = heliumVersion;
     src = pkgs.fetchurl {
@@ -29,6 +29,22 @@ let
         mkdir -p $out/share/applications
         cp ${desktopItem}/share/applications/helium.desktop $out/share/applications/
       '';
+  };
+  heliumBrowser = pkgs.symlinkJoin {
+    name = "helium-${heliumVersion}";
+    paths = [ heliumBrowserApp ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      rm -f $out/bin/helium
+      makeWrapper ${heliumBrowserApp}/bin/helium $out/bin/helium \
+        --set GTK_USE_PORTAL 1 \
+        --set XDG_CURRENT_DESKTOP Hyprland \
+        --set XDG_SESSION_DESKTOP Hyprland \
+        --set XDG_SESSION_TYPE wayland \
+        --set NIXOS_OZONE_WL 1 \
+        --add-flags --ozone-platform=wayland \
+        --add-flags --enable-features=UsePortalFileDialog
+    '';
   };
 in
 {
@@ -165,6 +181,24 @@ in
     withUWSM = true;
     xwayland.enable = true;
   };
+  xdg.portal = {
+    enable = true;
+    extraPortals = with pkgs; [
+      xdg-desktop-portal-termfilechooser
+    ];
+    config = {
+      common = {
+        default = [ "hyprland" "gtk" ];
+        "org.freedesktop.impl.portal.FileChooser" = [ "termfilechooser" ];
+        "org.freedesktop.impl.portal.Secret" = [ "gnome-keyring" ];
+      };
+      hyprland = {
+        default = [ "hyprland" "gtk" ];
+        "org.freedesktop.impl.portal.FileChooser" = [ "termfilechooser" ];
+        "org.freedesktop.impl.portal.Secret" = [ "gnome-keyring" ];
+      };
+    };
+  };
 
   services.xserver.xkb = {
     layout = "drix";
@@ -217,6 +251,7 @@ in
 
   environment.sessionVariables = {
     NIXOS_OZONE_WL = "1";
+    GTK_USE_PORTAL = "1";
     XDG_CURRENT_DESKTOP = "Hyprland";
     XDG_SESSION_DESKTOP = "Hyprland";
     XDG_SESSION_TYPE = "wayland";
