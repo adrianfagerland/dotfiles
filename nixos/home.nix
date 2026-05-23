@@ -115,6 +115,7 @@ in
 
   home.file.".local/bin/rclone-vedtak-gdrive-sync" = {
     executable = true;
+    force = true;
     text = ''
       #!${pkgs.bash}/bin/bash
       set -euo pipefail
@@ -201,24 +202,28 @@ in
     '';
   };
 
-  home.file.".config/rclone/vedtak-gdrive.filters".text = ''
-    - **/.git/**
-    - **/.venv/**
-    - **/node_modules/**
-    - **/__pycache__/**
-    - **/.pytest_cache/**
-    - **/.mypy_cache/**
-    - **/.ruff_cache/**
-    - **/.cache/**
-    - **/.~lock*#
-    - **/.DS_Store
-    - **/Thumbs.db
-    - **/*.swp
-    - **/*~
-  '';
+  home.file.".config/rclone/vedtak-gdrive.filters" = {
+    force = true;
+    text = ''
+      - **/.git/**
+      - **/.venv/**
+      - **/node_modules/**
+      - **/__pycache__/**
+      - **/.pytest_cache/**
+      - **/.mypy_cache/**
+      - **/.ruff_cache/**
+      - **/.cache/**
+      - **/.~lock*#
+      - **/.DS_Store
+      - **/Thumbs.db
+      - **/*.swp
+      - **/*~
+    '';
+  };
 
   home.file.".local/bin/gdrive-sync-now" = {
     executable = true;
+    force = true;
     text = ''
       #!${pkgs.runtimeShell}
       set -eu
@@ -229,6 +234,7 @@ in
 
   home.file.".local/bin/gdrive-sync-status" = {
     executable = true;
+    force = true;
     text = ''
       #!${pkgs.runtimeShell}
       set -eu
