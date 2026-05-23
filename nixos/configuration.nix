@@ -39,6 +39,24 @@ in
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
   nixpkgs.config.allowUnfree = true;
 
+  programs.nix-ld = {
+    enable = true;
+    libraries = with pkgs; [
+      stdenv.cc.cc
+      zlib
+      zstd
+      openssl
+      libffi
+      sqlite
+      xz
+      bzip2
+      libuuid
+      glib
+      curl
+      libxml2
+    ];
+  };
+
   networking.hostName = "nixos";
   networking.networkmanager.enable = true;
   networking.firewall = {
