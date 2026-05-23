@@ -54,7 +54,7 @@ Commit `flake.lock` after testing.
 
 Home Manager creates an rclone remote stub for the Vedtak shared drive
 (`vedtak-shared`, team drive ID `0ANLilboyAAoHUk9PVA`), a `~/gdrive` folder, and
-a user timer that runs `rclone bisync` every two minutes.
+a user timer that runs filtered `rclone bisync` every two minutes.
 
 After a fresh install, authorize the remote once:
 

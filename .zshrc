@@ -162,7 +162,7 @@ else
   alias ciao='shutdown now'
 fi
 
-alias c='claude --dangerously-skip-permissions'
+alias c='codex --dangerously-bypass-approvals-and-sandbox'
 
 # Google Cloud SDK
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/path.zsh.inc"; fi

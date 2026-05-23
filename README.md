@@ -144,7 +144,7 @@ Reopen terminal, then run `p10k configure` to generate `~/.p10k.zsh`.
 
 ### 11. (Optional) Google Drive sync via rclone
 
-Mirrors the `vedtak-shared` team drive to `~/gdrive` with two-way sync every 2 min.
+Mirrors the `vedtak-shared` team drive to `~/gdrive` with filtered two-way sync every 2 min.
 
 1. **Configure remote** (interactive, needs browser for OAuth):
    ```sh

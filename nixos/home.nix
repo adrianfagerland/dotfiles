@@ -5,6 +5,15 @@ let
   } ''
     printf 'P6\n1 1\n255\n\0\0\0' > "$out"
   '';
+  hy3_0_55 = pkgs.hyprlandPlugins.hy3.overrideAttrs (_: {
+    version = "0.55.0";
+    src = pkgs.fetchFromGitHub {
+      owner = "outfoxxed";
+      repo = "hy3";
+      tag = "hl0.55.0";
+      hash = "sha256-P3wwiIfqo89evW7xzI+wOI/qM1WPZBiiSmGNtBmYeVk=";
+    };
+  });
 in
 {
   home.username = "adrian";
@@ -114,27 +123,41 @@ in
       remote="$remote_name:"
       local_dir="$HOME/gdrive"
       state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/rclone/vedtak-gdrive"
+      filters_file="$HOME/.config/rclone/vedtak-gdrive.filters"
       initialized_file="$state_dir/initialized"
       resync=0
+      resync_mode="path1"
 
       usage() {
-        printf '%s\n' "usage: rclone-vedtak-gdrive-sync [--resync]"
+        printf '%s\n' "usage: rclone-vedtak-gdrive-sync [--resync [--resync-mode MODE]]"
       }
 
-      case "''${1:-}" in
-        "") ;;
-        --resync) resync=1 ;;
-        -h|--help)
-          usage
-          exit 0
-          ;;
-        *)
-          usage >&2
-          exit 2
-          ;;
-      esac
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --resync)
+            resync=1
+            shift
+            ;;
+          --resync-mode)
+            if [ "$#" -lt 2 ]; then
+              usage >&2
+              exit 2
+            fi
+            resync_mode="$2"
+            shift 2
+            ;;
+          -h|--help)
+            usage
+            exit 0
+            ;;
+          *)
+            usage >&2
+            exit 2
+            ;;
+        esac
+      done
 
-      ${pkgs.coreutils}/bin/mkdir -p "$local_dir" "$state_dir"
+      ${pkgs.coreutils}/bin/mkdir -p "$local_dir" "$state_dir" "$(${pkgs.coreutils}/bin/dirname "$filters_file")"
 
       if ! ${pkgs.rclone}/bin/rclone config show "$remote_name" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q '^token = '; then
         printf '%s\n' "rclone remote '$remote_name' is not authorized yet; run: rclone config reconnect $remote"
@@ -159,15 +182,59 @@ in
         --conflict-resolve newer
         --resilient
         --recover
+        --filters-file "$filters_file"
+        --fast-list
+        --tpslimit 4
+        --tpslimit-burst 8
+        --checkers 4
+        --transfers 2
+        --max-lock 30m
         --no-update-dir-modtime
       )
 
       if [ "$resync" -eq 1 ]; then
-        args+=(--resync --resync-mode path1)
+        args+=(--resync --resync-mode "$resync_mode")
       fi
 
       ${pkgs.rclone}/bin/rclone "''${args[@]}"
       ${pkgs.coreutils}/bin/touch "$initialized_file"
+    '';
+  };
+
+  home.file.".config/rclone/vedtak-gdrive.filters".text = ''
+    - **/.git/**
+    - **/.venv/**
+    - **/node_modules/**
+    - **/__pycache__/**
+    - **/.pytest_cache/**
+    - **/.mypy_cache/**
+    - **/.ruff_cache/**
+    - **/.cache/**
+    - **/.~lock*#
+    - **/.DS_Store
+    - **/Thumbs.db
+    - **/*.swp
+    - **/*~
+  '';
+
+  home.file.".local/bin/gdrive-sync-now" = {
+    executable = true;
+    text = ''
+      #!${pkgs.runtimeShell}
+      set -eu
+
+      ${pkgs.systemd}/bin/systemctl --user start rclone-vedtak-gdrive-bisync.service
+    '';
+  };
+
+  home.file.".local/bin/gdrive-sync-status" = {
+    executable = true;
+    text = ''
+      #!${pkgs.runtimeShell}
+      set -eu
+
+      ${pkgs.systemd}/bin/systemctl --user status rclone-vedtak-gdrive-bisync.timer rclone-vedtak-gdrive-bisync.service --no-pager --full
+      ${pkgs.systemd}/bin/journalctl --user -u rclone-vedtak-gdrive-bisync.service -n 80 --no-pager --output=short-iso
     '';
   };
 
@@ -335,7 +402,7 @@ EOF
       sov = "systemctl sleep";
       bye = "shutdown now";
       ciao = "shutdown now";
-      c = "claude --dangerously-skip-permissions";
+      c = "codex --dangerously-bypass-approvals-and-sandbox";
       fuck = "pay-respects";
       bwlogin = "rbw register && rbw unlock && rbw sync";
       bwunlock = "rbw unlock && rbw sync";
@@ -1554,10 +1621,11 @@ EOF
   wayland.windowManager.hyprland = {
     enable = true;
     systemd.enable = false;
+    configType = "hyprlang";
     importantPrefixes = [ "$" "bezier" "name" "output" "plugin" ];
     settings = {
       "$mod" = "SUPER";
-      plugin = "${pkgs.hyprlandPlugins.hy3}/lib/libhy3.so";
+      plugin = "${hy3_0_55}/lib/libhy3.so";
 
       monitor = [
         "eDP-1,1920x1080@60,0x0,1"
@@ -1628,7 +1696,6 @@ EOF
       };
 
       dwindle = {
-        pseudotile = false;
         force_split = 2;
         preserve_split = true;
         smart_split = false;
@@ -1836,7 +1903,23 @@ EOF
 
       pidfile="/tmp/push-to-talk.pid"
       audiofile="/tmp/push-to-talk.wav"
+      notifyfile="/tmp/push-to-talk-notification.id"
       keyfile="$HOME/.config/push-to-talk/groq_api_key"
+
+      notify_status() {
+        local timeout="$1"
+        local message="$2"
+        local replace_args=()
+        if [[ -s "$notifyfile" ]]; then
+          replace_args=(-r "$(cat "$notifyfile")")
+        fi
+
+        local id
+        id="$(notify-send -p -u low -t "$timeout" "''${replace_args[@]}" "Push-to-talk" "$message" 2>/dev/null || true)"
+        if [[ "$id" =~ ^[0-9]+$ ]]; then
+          printf '%s\n' "$id" > "$notifyfile"
+        fi
+      }
 
       if [[ ! -r "$keyfile" ]]; then
         notify-send -u critical "Push-to-talk" "Missing $keyfile"
@@ -1852,7 +1935,7 @@ EOF
           sleep 0.1
         done
         rm -f "$pidfile"
-        notify-send -u low -t 2000 "Transcribing..."
+        notify_status 2000 "Transcribing..."
 
         response="$(
           curl -s https://api.groq.com/openai/v1/audio/transcriptions \
@@ -1872,7 +1955,7 @@ EOF
 
         rm -f "$audiofile"
       else
-        notify-send -u low -t 0 "Recording..."
+        notify_status 0 "Recording..."
         arecord -f S16_LE -r 44100 -c 1 -q "$audiofile" &
         echo "$!" > "$pidfile"
       fi
