@@ -213,6 +213,10 @@ in
     gh
     vim
     neovim
+    zed-editor
+    (writeShellScriptBin "zed" ''
+      exec ${zed-editor}/bin/zeditor "$@"
+    '')
     curl
     wget
     jq
