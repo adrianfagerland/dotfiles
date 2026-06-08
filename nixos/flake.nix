@@ -23,9 +23,15 @@
     # Use the release branch so the CachyOS kernel is likely to be in binary cache.
     nix-cachyos-kernel.url = "github:xddxdd/nix-cachyos-kernel/release";
 
+    codex-desktop-linux.url = "github:ilysenko/codex-desktop-linux";
+
+    claude-desktop = {
+      url = "github:aaddrick/claude-desktop-debian";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = inputs@{ nixpkgs, home-manager, nix-cachyos-kernel, ... }: {
+  outputs = inputs@{ nixpkgs, home-manager, nix-cachyos-kernel, codex-desktop-linux, claude-desktop, ... }: {
     nixosConfigurations.nixos = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
@@ -33,6 +39,11 @@
         home-manager.nixosModules.home-manager
         ({ pkgs, ... }: {
           nixpkgs.overlays = [
+            (import ./overlays/ai-cli.nix)
+            (final: prev: {
+              codex-desktop = codex-desktop-linux.packages.${final.stdenv.hostPlatform.system}.codex-desktop;
+            })
+            claude-desktop.overlays.default
             nix-cachyos-kernel.overlays.pinned
           ];
 

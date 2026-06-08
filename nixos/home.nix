@@ -284,6 +284,26 @@ in
     '';
   };
 
+  home.file.".local/bin/ntnu-vpn-refresh" = {
+    executable = true;
+    force = true;
+    text = ''
+      #!${pkgs.runtimeShell}
+      set -eu
+
+      ${pkgs.networkmanager}/bin/nmcli connection down "NTNU VPN" >/dev/null 2>&1 || true
+      ${pkgs.networkmanager}/bin/nmcli connection delete "NTNU VPN" >/dev/null 2>&1 || true
+      ${pkgs.networkmanager}/bin/nmcli connection add \
+        type vpn \
+        ifname '*' \
+        con-name "NTNU VPN" \
+        vpn-type openconnect \
+        vpn.data "gateway=vpn.ntnu.no,protocol=anyconnect,useragent=AnyConnect Linux"
+      ${pkgs.networkmanager}/bin/nmcli connection modify "NTNU VPN" connection.autoconnect no
+      ${pkgs.networkmanager}/bin/nmcli connection up "NTNU VPN"
+    '';
+  };
+
   home.activation.ensureVedtakGdriveRcloneRemote = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     rclone_config="$HOME/.config/rclone/rclone.conf"
     ${pkgs.coreutils}/bin/mkdir -p "$HOME/.config/rclone" "$HOME/gdrive"
@@ -330,6 +350,7 @@ EOF
 
   home.file.".local/bin/codex-node-repl" = {
     executable = true;
+    force = true;
     text = ''
       #!/usr/bin/env sh
       set -eu
@@ -342,6 +363,11 @@ EOF
 
           if [ "''${CODEX_ELECTRON_RESOURCES_PATH:-}" != "" ] && [ -x "$CODEX_ELECTRON_RESOURCES_PATH/node_repl" ]; then
               printf '%s\n' "$CODEX_ELECTRON_RESOURCES_PATH/node_repl"
+              return 0
+          fi
+
+          if [ -x "${pkgs.codex-desktop}/opt/codex-desktop/resources/node_repl" ]; then
+              printf '%s\n' "${pkgs.codex-desktop}/opt/codex-desktop/resources/node_repl"
               return 0
           fi
 
@@ -392,6 +418,69 @@ EOF
       export CODEX_HOME="''${CODEX_HOME:-$HOME/.codex}"
 
       exec "$loader" "$node_repl" "$@"
+    '';
+  };
+
+  home.file.".local/bin/codex-desktop" = {
+    executable = true;
+    force = true;
+    text = ''
+      #!${pkgs.bash}/bin/bash
+      set -euo pipefail
+
+      # Codex Desktop's Nix wrapper provides GTK3 libraries but does not expose
+      # the matching GTK3 GSettings schemas. Native file/project choosers can
+      # abort when org.gtk.Settings.FileChooser is not visible.
+      original="''${CODEX_DESKTOP_ORIGINAL:-${pkgs.codex-desktop}/bin/codex-desktop}"
+      resolved="$(${pkgs.coreutils}/bin/readlink -f "$original" 2>/dev/null || ${pkgs.coreutils}/bin/printf '%s\n' "$original")"
+
+      prepend_schema_root() {
+          local schema_root="$1"
+          local schema_dir="$schema_root/glib-2.0/schemas"
+
+          if [ -f "$schema_dir/gschemas.compiled" ]; then
+              XDG_DATA_DIRS="$schema_root''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+              export XDG_DATA_DIRS
+          fi
+      }
+
+      gtk3_lib="$(${pkgs.gnugrep}/bin/grep -m 1 -o '/nix/store/[^":]*-gtk+3-[^"/]*/lib' "$resolved" 2>/dev/null || true)"
+      gtk3_store="''${gtk3_lib%/lib}"
+
+      if [ -n "$gtk3_store" ]; then
+          for schema_root in "$gtk3_store"/share/gsettings-schemas/*; do
+              schema_dir="$schema_root/glib-2.0/schemas"
+              if [ -f "$schema_dir/gschemas.compiled" ]; then
+                  export GSETTINGS_SCHEMA_DIR="$schema_dir"
+                  prepend_schema_root "$schema_root"
+                  break
+              fi
+          done
+      fi
+
+      for schema_root in ${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/*; do
+          prepend_schema_root "$schema_root"
+      done
+
+      exec "$original" "$@"
+    '';
+  };
+
+  xdg.dataFile."applications/codex-desktop.desktop" = {
+    force = true;
+    text = ''
+      [Desktop Entry]
+      Name=Codex Desktop
+      Comment=Run Codex Desktop on Linux
+      Exec=env BAMF_DESKTOP_FILE_HINT=${config.home.homeDirectory}/.local/share/applications/codex-desktop.desktop CHROME_DESKTOP=codex-desktop.desktop ${config.home.homeDirectory}/.local/bin/codex-desktop %u
+      Icon=codex-desktop
+      Terminal=false
+      Type=Application
+      Categories=Development;
+      MimeType=x-scheme-handler/codex;x-scheme-handler/codex-browser-sidebar;
+      StartupNotify=true
+      StartupWMClass=codex-desktop
+      X-GNOME-WMClass=codex-desktop
     '';
   };
 

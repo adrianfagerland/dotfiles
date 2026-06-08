@@ -74,7 +74,12 @@ in
   };
 
   networking.hostName = "nixos";
-  networking.networkmanager.enable = true;
+  networking.networkmanager = {
+    enable = true;
+    plugins = with pkgs; [
+      networkmanager-openconnect
+    ];
+  };
   networking.firewall = {
     enable = true;
     allowedTCPPorts = [ 22 ];
@@ -133,7 +138,8 @@ in
 
   systemd.services.power-profile-auto = {
     description = "Set power profile based on AC state";
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "graphical.target" ];
+    wants = [ "power-profiles-daemon.service" ];
     after = [ "power-profiles-daemon.service" ];
     serviceConfig.Type = "oneshot";
     script = ''
@@ -146,10 +152,21 @@ in
       done
 
       if [ "$ac_online" = "1" ]; then
-        ${pkgs.power-profiles-daemon}/bin/powerprofilesctl set balanced
+        profile=balanced
       else
-        ${pkgs.power-profiles-daemon}/bin/powerprofilesctl set power-saver
+        profile=power-saver
       fi
+
+      for attempt in $(seq 1 20); do
+        if ${pkgs.power-profiles-daemon}/bin/powerprofilesctl list | grep -Eq "^\\*? *$profile:"; then
+          ${pkgs.power-profiles-daemon}/bin/powerprofilesctl set "$profile"
+          exit 0
+        fi
+        sleep 0.5
+      done
+
+      echo "Power profile '$profile' is not available" >&2
+      ${pkgs.power-profiles-daemon}/bin/powerprofilesctl list >&2 || true
     '';
   };
 
@@ -222,7 +239,6 @@ in
   };
   services.blueman = {
     enable = true;
-    withApplet = false;
   };
 
   services.gnome.gnome-keyring.enable = true;
@@ -309,6 +325,7 @@ in
     pavucontrol
     networkmanagerapplet
     networkmanager_dmenu
+    openconnect
     blueman
     bitwarden-desktop
     bitwarden-cli
@@ -321,6 +338,9 @@ in
     rclone
     pay-respects
     codex
+    codex-desktop
+    claude-code
+    claude-desktop-fhs
     uv
     pnpm
     bun
