@@ -81,6 +81,7 @@ in
       "application/xhtml+xml" = [ "helium.desktop" ];
       "x-scheme-handler/http" = [ "helium.desktop" ];
       "x-scheme-handler/https" = [ "helium.desktop" ];
+      "application/pdf" = [ "helium.desktop" ];
     };
   };
 

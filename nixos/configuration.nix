@@ -1,13 +1,13 @@
 { config, pkgs, ... }:
 
 let
-  heliumVersion = "0.12.1.1";
+  heliumVersion = "0.13.4.1";
   heliumBrowserApp = pkgs.appimageTools.wrapType2 rec {
     pname = "helium";
     version = heliumVersion;
     src = pkgs.fetchurl {
       url = "https://github.com/imputnet/helium-linux/releases/download/${version}/helium-${version}-x86_64.AppImage";
-      hash = "sha256-+UE+JqQtxbA5szPvAohapXlES21VBOdNsV6Ej1dRRfs=";
+      hash = "sha256-z23up+T6bj6F+cQslmI92bEksIAw1OQHRIrmQSaaxY8=";
     };
     extraInstallCommands =
       let
@@ -54,6 +54,10 @@ in
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
   nixpkgs.config.allowUnfree = true;
+  nixpkgs.config.permittedInsecurePackages = [
+    # bitwarden-desktop 2026.5.0 is still packaged against this EOL Electron.
+    "electron-39.8.10"
+  ];
 
   programs.nix-ld = {
     enable = true;
@@ -70,6 +74,43 @@ in
       glib
       curl
       libxml2
+
+      # Runtime libraries for Playwright's bundled Chromium (e2e tests). The
+      # downloaded chrome-headless-shell uses the plain glibc loader, so these
+      # must be reachable via LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH at test time
+      # (they aggregate into /run/current-system/sw/share/nix-ld/lib).
+      nss
+      nspr
+      atk
+      at-spi2-atk
+      at-spi2-core
+      cups
+      dbus
+      libdrm
+      libgbm
+      libxkbcommon
+      expat
+      alsa-lib
+      pango
+      cairo
+      gtk3
+      gdk-pixbuf
+      fontconfig
+      freetype
+      systemd # libudev.so.1
+      xorg.libX11
+      xorg.libxcb
+      xorg.libXcomposite
+      xorg.libXdamage
+      xorg.libXext
+      xorg.libXfixes
+      xorg.libXrandr
+      xorg.libXrender
+      xorg.libXtst
+      xorg.libXi
+      xorg.libXcursor
+      xorg.libXScrnSaver
+      xorg.libxshmfence
     ];
   };
 
@@ -326,6 +367,7 @@ in
     networkmanagerapplet
     networkmanager_dmenu
     openconnect
+    tigervnc
     blueman
     bitwarden-desktop
     bitwarden-cli

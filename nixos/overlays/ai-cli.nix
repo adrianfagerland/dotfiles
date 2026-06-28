@@ -6,11 +6,11 @@ let
 
   codex-bin = final.stdenvNoCC.mkDerivation rec {
     pname = "codex";
-    version = "0.137.0";
+    version = "0.141.0";
 
     src = final.fetchurl {
       url = "https://registry.npmjs.org/@openai/codex/-/codex-${version}-linux-x64.tgz";
-      hash = "sha256-ZpFMs/Pkl75jhvSgFVX+Wc0ICWJruXbMagZEBUJko/w=";
+      hash = "sha256-sfN+kL0WaMVNZQbfUybrVErluy9Fv1vhMuT/7sK1uJ4=";
     };
 
     nativeBuildInputs = [
@@ -43,11 +43,11 @@ let
 
   claude-code-bin = final.stdenvNoCC.mkDerivation rec {
     pname = "claude-code";
-    version = "2.1.168";
+    version = "2.1.191";
 
     src = final.fetchurl {
       url = "https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-${version}.tgz";
-      hash = "sha256-LetQ2AO6uOo0M61zY8uk2p1p9oQH9MW8ByOWxMSNvag=";
+      hash = "sha256-ydYpnPcXOjlJreujN2gunWf7+9gxxKdw2sWQiZzusFQ=";
     };
 
     nativeBuildInputs = [
