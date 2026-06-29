@@ -43,7 +43,8 @@ let
         --set XDG_SESSION_TYPE wayland \
         --set NIXOS_OZONE_WL 1 \
         --add-flags --ozone-platform=wayland \
-        --add-flags --enable-features=UsePortalFileDialog
+        --add-flags --enable-features=UsePortalFileDialog \
+        --add-flags --disable-features=VaapiVideoDecoder,VaapiVideoEncoder,VaapiVideoDecodeLinuxGL
     '';
   };
 in
@@ -131,6 +132,18 @@ in
 
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+
+  # Keep core dumps for large processes (e.g. Helium/Chromium renderers) so crashes
+  # are debuggable. Defaults cap ProcessSizeMax/ExternalSizeMax at 1G, which silently
+  # drops multi-GB browser cores.
+  systemd.coredump.enable = true;
+  systemd.coredump.settings.Coredump = {
+    Storage = "external";
+    Compress = "yes";
+    ProcessSizeMax = "8G";
+    ExternalSizeMax = "8G";
+    MaxUse = "10G";
+  };
 
   hardware.enableRedistributableFirmware = true;
   hardware.cpu.intel.updateMicrocode = true;
