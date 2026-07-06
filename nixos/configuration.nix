@@ -99,19 +99,19 @@ in
       fontconfig
       freetype
       systemd # libudev.so.1
-      xorg.libX11
-      xorg.libxcb
-      xorg.libXcomposite
-      xorg.libXdamage
-      xorg.libXext
-      xorg.libXfixes
-      xorg.libXrandr
-      xorg.libXrender
-      xorg.libXtst
-      xorg.libXi
-      xorg.libXcursor
-      xorg.libXScrnSaver
-      xorg.libxshmfence
+      libx11
+      libxcb
+      libxcomposite
+      libxdamage
+      libxext
+      libxfixes
+      libxrandr
+      libxrender
+      libxtst
+      libxi
+      libxcursor
+      libxscrnsaver
+      libxshmfence
     ];
   };
 
