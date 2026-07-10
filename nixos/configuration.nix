@@ -355,6 +355,7 @@ in
     ghostty
     alacritty
     yazi
+    google-chrome
     heliumBrowser
     rofi
     waybar
