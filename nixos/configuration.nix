@@ -127,6 +127,11 @@ in
     allowedTCPPorts = [ 22 ];
   };
 
+  services.tailscale = {
+    enable = true;
+    openFirewall = true;
+  };
+
   time.timeZone = "Europe/Oslo";
   i18n.defaultLocale = "en_US.UTF-8";
 
@@ -149,8 +154,56 @@ in
   hardware.cpu.intel.updateMicrocode = true;
 
   powerManagement.enable = true;
-  zramSwap.enable = true;
   services.power-profiles-daemon.enable = true;
+
+  # --- Out-of-memory handling ---------------------------------------------
+  # On 2026-07-07 a memory spike drove free swap to ~0; a heap allocation in
+  # Hyprland then failed and the compositor segfaulted, tearing down the whole
+  # graphical session (looked like a spontaneous "crash + logout"). Three
+  # layers now guard against a repeat:
+
+  # 1. zram: fast, compressed, RAM-backed swap. Used first (higher priority).
+  zramSwap.enable = true;
+
+  # 2. A real on-disk swapfile as overflow past zram, giving memory pressure
+  #    genuine runway instead of a hard wall. It lives on the LUKS-encrypted
+  #    root, so it is encrypted at rest. Auto-created on the next rebuild.
+  swapDevices = [
+    {
+      device = "/var/lib/swapfile";
+      size = 16 * 1024; # MiB => 16 GiB
+    }
+  ];
+
+  # 3. earlyoom: shed a memory hog *before* the kernel's hard OOM wall, so a
+  #    spike can never starve the compositor into a failed allocation again.
+  #    SIGTERM at 5% free RAM / 10% free swap (SIGKILL at half of each). It is
+  #    told to never target the compositor or core session plumbing, and to
+  #    prefer the heavy Electron/browser apps as victims. earlyoom honours
+  #    oom_score_adj, and the compositor runs at +200 (more killable than the
+  #    default 0), so the explicit --avoid list is what actually shields it.
+  #    (A user systemd unit cannot lower Hyprland below the user manager's
+  #    score without CAP_SYS_RESOURCE, so --avoid is the reliable lever here.)
+  services.earlyoom = {
+    enable = true;
+    freeMemThreshold = 5;
+    freeSwapThreshold = 10;
+    enableNotifications = true; # desktop notification naming the killed process
+    extraArgs = [
+      "-g" # kill the whole process group (e.g. a browser's tab tree)
+      "--avoid"
+      "(Hyprland|hyprlock|wayland-wm|uwsm|Xwayland|systemd|sd-pam|gnome-keyring|pipewire|wireplumber|dbus|sshd)"
+      "--prefer"
+      "(helium|chrome|chromium|electron|claude|codex|bun)"
+    ];
+  };
+
+  # Run a single userspace OOM guard. systemd-oomd (on by default) acts on
+  # cgroup PSI pressure and did not intervene in time on 2026-07-07; running it
+  # alongside earlyoom means two daemons with different policies both killing
+  # processes. Let earlyoom (tuned above) be the sole guard.
+  systemd.oomd.enable = false;
+  # ------------------------------------------------------------------------
   services.thermald.enable = true;
   services.upower = {
     enable = true;
@@ -231,6 +284,14 @@ in
   virtualisation.docker = {
     enable = true;
     enableOnBoot = true;
+  };
+
+  virtualisation.podman = {
+    enable = true;
+    # Docker (above) already owns the `docker` command and /run/docker.sock, so
+    # leave dockerCompat/dockerSocket off — enabling them would collide with
+    # virtualisation.docker. Podman runs rootless by default, no group needed.
+    defaultNetwork.settings.dns_enabled = true; # container name DNS on the default net
   };
 
   users.users.adrian = {
@@ -382,6 +443,12 @@ in
     networkmanager_dmenu
     openconnect
     tigervnc
+    (writeShellScriptBin "vnc-mac-mini" ''
+      exec ${tigervnc}/bin/vncviewer \
+        -via adrian@100.75.174.48 \
+        "$@" \
+        localhost:0
+    '')
     blueman
     bitwarden-desktop
     bitwarden-cli
