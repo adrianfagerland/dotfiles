@@ -6,11 +6,11 @@ let
 
   codex-bin = final.stdenvNoCC.mkDerivation rec {
     pname = "codex";
-    version = "0.144.6";
+    version = "0.145.0";
 
     src = final.fetchurl {
       url = "https://registry.npmjs.org/@openai/codex/-/codex-${version}-linux-x64.tgz";
-      hash = "sha256-tnUusujBDm/MlqxcHIrYNCzbmnRQT7hGhq3fCBp9KGg=";
+      hash = "sha256-ESOUgPjj79FDDyO76RwaOXhWuLvmGFzLruI4LSXgPfI=";
     };
 
     nativeBuildInputs = [

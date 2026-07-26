@@ -412,6 +412,73 @@ in
     pciutils
     powertop
     upower
+    (writeShellScriptBin "caffeinate" ''
+      usage() {
+        echo "Usage: caffeinate [-dimsu] [-t seconds] [-w pid] [command [args...]]"
+      }
+
+      timeout_seconds=""
+      wait_pid=""
+
+      if [[ "''${1:-}" == "--help" ]]; then
+        usage
+        exit 0
+      fi
+
+      while getopts ":dimsut:w:h" option; do
+        case "$option" in
+          d|i|m|s|u)
+            # Compatibility flags from macOS caffeinate. On Hyprland,
+            # one idle+sleep inhibitor covers the corresponding behavior.
+            ;;
+          t)
+            timeout_seconds="$OPTARG"
+            ;;
+          w)
+            wait_pid="$OPTARG"
+            ;;
+          h)
+            usage
+            exit 0
+            ;;
+          :)
+            echo "caffeinate: option -$OPTARG requires an argument" >&2
+            usage >&2
+            exit 2
+            ;;
+          \?)
+            echo "caffeinate: unknown option -$OPTARG" >&2
+            usage >&2
+            exit 2
+            ;;
+        esac
+      done
+      shift $((OPTIND - 1))
+
+      inhibit=(
+        ${systemd}/bin/systemd-inhibit
+        --what=idle:sleep
+        --who=caffeinate
+        --why="caffeinate is keeping the session awake"
+        --mode=block
+      )
+
+      if [[ -n "$wait_pid" ]]; then
+        exec "''${inhibit[@]}" ${bash}/bin/bash -c \
+          'while kill -0 "$1" 2>/dev/null; do sleep 1; done' \
+          caffeinate "$wait_pid"
+      elif [[ "$#" -gt 0 ]]; then
+        exec "''${inhibit[@]}" "$@"
+      elif [[ -n "$timeout_seconds" ]]; then
+        ${coreutils}/bin/timeout "$timeout_seconds" \
+          "''${inhibit[@]}" ${coreutils}/bin/sleep infinity
+        status="$?"
+        [[ "$status" -eq 124 ]] && exit 0
+        exit "$status"
+      else
+        exec "''${inhibit[@]}" ${coreutils}/bin/sleep infinity
+      fi
+    '')
 
     ghostty
     alacritty
