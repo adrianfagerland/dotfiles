@@ -429,6 +429,11 @@ EOF
       #!${pkgs.bash}/bin/bash
       set -euo pipefail
 
+      # Node/TypeScript processes launched by Codex can abort after exhausting
+      # their V8 heap. Disable core files for this process tree so a compiler
+      # failure cannot stall the desktop while systemd writes several GiB.
+      ulimit -c 0
+
       # Codex Desktop's Nix wrapper provides GTK3 libraries but does not expose
       # the matching GTK3 GSettings schemas. Native file/project choosers can
       # abort when org.gtk.Settings.FileChooser is not visible.
