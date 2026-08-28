@@ -5,15 +5,6 @@ let
   } ''
     printf 'P6\n1 1\n255\n\0\0\0' > "$out"
   '';
-  hy3_0_55 = pkgs.hyprlandPlugins.hy3.overrideAttrs (_: {
-    version = "0.55.0";
-    src = pkgs.fetchFromGitHub {
-      owner = "outfoxxed";
-      repo = "hy3";
-      tag = "hl0.55.0";
-      hash = "sha256-P3wwiIfqo89evW7xzI+wOI/qM1WPZBiiSmGNtBmYeVk=";
-    };
-  });
 in
 {
   home.username = "adrian";
@@ -23,6 +14,7 @@ in
   programs.home-manager.enable = true;
 
   home.pointerCursor = {
+    enable = true;
     package = pkgs.bibata-cursors;
     name = "Bibata-Modern-Classic";
     size = 24;
@@ -86,6 +78,17 @@ in
   };
 
   xdg.configFile."mimeapps.list".force = true;
+  # Whole-monitor capture currently fails DMA-BUF negotiation on this Intel/Hyprland
+  # stack. Avoid the renegotiation loop and keep SHM capture cheap enough for meetings.
+  xdg.configFile."hypr/xdph.conf" = {
+    force = true;
+    text = ''
+      screencopy {
+          force_shm = true
+          max_fps = 30
+      }
+    '';
+  };
   xdg.portal = {
     enable = true;
     extraPortals = with pkgs; [
@@ -226,6 +229,11 @@ in
         --recover
         --filters-file "$filters_file"
         --fast-list
+        # Folder shortcuts can form cycles in Drive (currently the dibk and
+        # molde aliases do). All shortcut targets also exist canonically in
+        # this shared drive, so skip aliases instead of recursively following
+        # them and exhausting the Drive API quota.
+        --drive-skip-shortcuts
         --tpslimit 4
         --tpslimit-burst 8
         --checkers 4
@@ -333,6 +341,7 @@ EOF
     Service = {
       Type = "oneshot";
       ExecStart = "%h/.local/bin/rclone-vedtak-gdrive-sync";
+      TimeoutStartSec = "30min";
     };
   };
 
@@ -341,7 +350,7 @@ EOF
 
     Timer = {
       OnActiveSec = "30s";
-      OnUnitActiveSec = "2min";
+      OnUnitInactiveSec = "2min";
       Unit = "rclone-vedtak-gdrive-bisync.service";
       Persistent = true;
     };
@@ -422,6 +431,17 @@ EOF
     '';
   };
 
+  xdg.configFile."systemd/user/app-codex-desktop-.scope.d/50-resources.conf" = {
+    force = true;
+    text = ''
+      [Scope]
+      CPUQuota=300%
+      CPUWeight=10
+      IOWeight=10
+      MemoryHigh=6G
+    '';
+  };
+
   home.file.".local/bin/codex-desktop" = {
     executable = true;
     force = true;
@@ -433,6 +453,100 @@ EOF
       # their V8 heap. Disable core files for this process tree so a compiler
       # failure cannot stall the desktop while systemd writes several GiB.
       ulimit -c 0
+
+      state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/codex-desktop"
+      cache_dir="''${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop"
+      config_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/Codex"
+      app_pid_file="$state_dir/app.pid"
+      cleanup_marker="$state_dir/cleanup-on-next-launch"
+      launcher_log="$cache_dir/launcher.log"
+
+      codex_is_running() {
+          local pid
+          local executable
+
+          [ -r "$app_pid_file" ] || return 1
+          IFS= read -r pid < "$app_pid_file" || return 1
+          [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+          [ -r "/proc/$pid/exe" ] || return 1
+          executable="$(${pkgs.coreutils}/bin/readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+
+          case "$executable" in
+              */codex-desktop-*/opt/codex-desktop/electron) return 0 ;;
+              *) return 1 ;;
+          esac
+      }
+
+      compact_launcher_log() {
+          local max_bytes="''${CODEX_LAUNCHER_LOG_MAX_BYTES:-134217728}"
+          local keep_bytes="''${CODEX_LAUNCHER_LOG_KEEP_BYTES:-16777216}"
+          local size
+          local compacted
+
+          [ -f "$launcher_log" ] || return 0
+          size="$(${pkgs.coreutils}/bin/stat -c %s "$launcher_log" 2>/dev/null || echo 0)"
+          [[ "$size" =~ ^[0-9]+$ ]] || return 0
+          [ "$size" -gt "$max_bytes" ] || return 0
+
+          ${pkgs.coreutils}/bin/mkdir -p "$cache_dir"
+          compacted="$(${pkgs.coreutils}/bin/mktemp "$cache_dir/.launcher.log.compact.XXXXXX")"
+          ${pkgs.coreutils}/bin/tail -c "$keep_bytes" "$launcher_log" > "$compacted"
+          ${pkgs.coreutils}/bin/chmod 600 "$compacted"
+          # Copy over the existing inode so an inherited log descriptor cannot
+          # keep a removed multi-gigabyte file alive.
+          ${pkgs.coreutils}/bin/cp -- "$compacted" "$launcher_log"
+          ${pkgs.coreutils}/bin/rm -f "$compacted"
+      }
+
+      run_staged_cleanup() {
+          [ -e "$cleanup_marker" ] || return 0
+
+          ${pkgs.coreutils}/bin/rm -rf -- \
+              "$config_dir/Cache" \
+              "$config_dir/Code Cache" \
+              "$config_dir/GPUCache" \
+              "$config_dir/DawnGraphiteCache" \
+              "$config_dir/DawnWebGPUCache" \
+              "$config_dir/Partitions/codex-browser-app/Cache" \
+              "$config_dir/Partitions/codex-browser-app/Code Cache" \
+              "$config_dir/Partitions/codex-browser-app/GPUCache" \
+              "$config_dir/Partitions/codex-browser-app/DawnGraphiteCache" \
+              "$config_dir/Partitions/codex-browser-app/DawnWebGPUCache"
+
+          if [ -d "$state_dir/tmp" ]; then
+              ${pkgs.findutils}/bin/find "$state_dir/tmp" \
+                  -mindepth 1 -maxdepth 1 -mtime +7 \
+                  -exec ${pkgs.coreutils}/bin/rm -rf -- {} +
+          fi
+
+          ${pkgs.coreutils}/bin/rm -f "$cleanup_marker"
+      }
+
+      apply_resource_guard() {
+          local cgroup_path
+          local scope_unit
+
+          cgroup_path="$(${pkgs.gawk}/bin/awk -F: '$1 == "0" { print $3; exit }' /proc/self/cgroup 2>/dev/null || true)"
+          scope_unit="''${cgroup_path##*/}"
+
+          case "$scope_unit" in
+              app-codex-desktop-*.scope)
+                  ${pkgs.systemd}/bin/systemctl --user set-property --runtime "$scope_unit" \
+                      "CPUQuota=''${CODEX_DESKTOP_CPU_QUOTA:-300%}" \
+                      "CPUWeight=''${CODEX_DESKTOP_CPU_WEIGHT:-10}" \
+                      "IOWeight=''${CODEX_DESKTOP_IO_WEIGHT:-10}" \
+                      "MemoryHigh=''${CODEX_DESKTOP_MEMORY_HIGH:-6G}" \
+                      >/dev/null 2>&1 || true
+                  ;;
+          esac
+      }
+
+      ${pkgs.coreutils}/bin/mkdir -p "$state_dir" "$cache_dir"
+      apply_resource_guard
+      if ! codex_is_running; then
+          compact_launcher_log
+          run_staged_cleanup
+      fi
 
       # Codex Desktop's Nix wrapper provides GTK3 libraries but does not expose
       # the matching GTK3 GSettings schemas. Native file/project choosers can
@@ -1721,7 +1835,7 @@ EOF
     importantPrefixes = [ "$" "bezier" "name" "output" "plugin" ];
     settings = {
       "$mod" = "SUPER";
-      plugin = "${hy3_0_55}/lib/libhy3.so";
+      plugin = "${pkgs.hyprlandPlugins.hy3}/lib/libhy3.so";
 
       monitor = [
         "eDP-1,1920x1080@60,0x0,1"

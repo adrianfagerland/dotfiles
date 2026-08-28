@@ -1,13 +1,13 @@
 { config, pkgs, ... }:
 
 let
-  heliumVersion = "0.13.4.1";
+  heliumVersion = "0.16.1.1";
   heliumBrowserApp = pkgs.appimageTools.wrapType2 rec {
     pname = "helium";
     version = heliumVersion;
     src = pkgs.fetchurl {
       url = "https://github.com/imputnet/helium-linux/releases/download/${version}/helium-${version}-x86_64.AppImage";
-      hash = "sha256-z23up+T6bj6F+cQslmI92bEksIAw1OQHRIrmQSaaxY8=";
+      hash = "sha256-KZFPd7RdwbDQ/hDXgV4bZKytO+4dtyig7ctDzIj20ng=";
     };
     extraInstallCommands =
       let
@@ -37,6 +37,7 @@ let
     postBuild = ''
       rm -f $out/bin/helium
       makeWrapper ${heliumBrowserApp}/bin/helium $out/bin/helium \
+        --run 'ulimit -c 0' \
         --set GTK_USE_PORTAL 1 \
         --set XDG_CURRENT_DESKTOP Hyprland \
         --set XDG_SESSION_DESKTOP Hyprland \
@@ -46,6 +47,24 @@ let
         --add-flags --enable-features=UsePortalFileDialog \
         --add-flags --disable-features=VaapiVideoDecoder,VaapiVideoEncoder,VaapiVideoDecodeLinuxGL
     '';
+  };
+  meetSafe = pkgs.writeShellScriptBin "meet-safe" ''
+    # Keep a browser failure from invoking systemd-coredump on a multi-GB process.
+    ulimit -c 0
+    export GTK_USE_PORTAL=1
+    export MOZ_ENABLE_WAYLAND=1
+    export XDG_CURRENT_DESKTOP=Hyprland
+    export XDG_SESSION_DESKTOP=Hyprland
+    export XDG_SESSION_TYPE=wayland
+    exec ${pkgs.firefox}/bin/firefox --new-window https://meet.google.com "$@"
+  '';
+  meetSafeDesktop = pkgs.makeDesktopItem {
+    name = "meet-safe";
+    desktopName = "Google Meet (Firefox)";
+    genericName = "Video Meeting";
+    exec = "meet-safe";
+    icon = "firefox";
+    categories = [ "Network" "VideoConference" ];
   };
 in
 {
@@ -138,16 +157,16 @@ in
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # Keep core dumps for large processes (e.g. Helium/Chromium renderers) so crashes
-  # are debuggable. Defaults cap ProcessSizeMax/ExternalSizeMax at 1G, which silently
-  # drops multi-GB browser cores.
+  # Retain useful native cores without allowing a browser/Electron renderer crash to
+  # saturate RAM and disk for minutes. Browser wrappers additionally disable their
+  # kernel core dumps; Chromium Crashpad still records its compact minidumps.
   systemd.coredump.enable = true;
   systemd.coredump.settings.Coredump = {
     Storage = "external";
     Compress = "yes";
-    ProcessSizeMax = "8G";
-    ExternalSizeMax = "8G";
-    MaxUse = "10G";
+    ProcessSizeMax = "512M";
+    ExternalSizeMax = "512M";
+    MaxUse = "2G";
   };
 
   hardware.enableRedistributableFirmware = true;
@@ -404,6 +423,7 @@ in
     curl
     wget
     jq
+    zip
     unzip
     ripgrep
     fd
@@ -485,6 +505,8 @@ in
     yazi
     google-chrome
     heliumBrowser
+    meetSafe
+    meetSafeDesktop
     rofi
     waybar
     mako
