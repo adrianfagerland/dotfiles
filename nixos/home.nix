@@ -729,8 +729,8 @@ EOF
       #!/usr/bin/env bash
       set -euo pipefail
 
-      hyprctl dispatch hy3:changegroup untab >/dev/null 2>&1 || true
-      hyprctl dispatch hy3:changegroup opposite >/dev/null 2>&1 || true
+      hyprctl dispatch 'hl.plugin.hy3.change_group("untab")'  >/dev/null 2>&1 || true
+      hyprctl dispatch 'hl.plugin.hy3.change_group("opposite")'  >/dev/null 2>&1 || true
     '';
   };
 
@@ -777,14 +777,14 @@ EOF
         hyprctl workspaces -j \
           | jq -r '.[].id' \
           | while read -r workspace; do
-              hyprctl dispatch moveworkspacetomonitor "$workspace" "$target" >/dev/null 2>&1 || true
+              hyprctl dispatch "hl.dsp.workspace.move({ workspace = '$workspace', monitor = '$target' })" >/dev/null 2>&1 || true
             done
       }
 
       apply_laptop() {
-        hyprctl keyword monitor "$laptop,$laptop_mode,0x0,1" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1 })" >/dev/null
         move_all_workspaces_to_monitor "$laptop"
-        hyprctl keyword monitor "$external,disable" >/dev/null 2>&1 || true
+        hyprctl eval "hl.monitor({ output = '$external', disabled = true })" >/dev/null 2>&1 || true
         notify_mode "laptop" "Laptop screen only"
       }
 
@@ -795,9 +795,9 @@ EOF
           return
         fi
 
-        hyprctl keyword monitor "$external,$external_mode,0x0,1" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$external', mode = '$external_mode', position = '0x0', scale = 1 })" >/dev/null
         move_all_workspaces_to_monitor "$external"
-        hyprctl keyword monitor "$laptop,disable" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$laptop', disabled = true })" >/dev/null
         notify_mode "external" "External screen only"
       }
 
@@ -808,7 +808,7 @@ EOF
           return
         fi
 
-        hyprctl --batch "keyword monitor $laptop,$laptop_mode,0x0,1 ; keyword monitor $external,$external_mode,$external_right_pos,1" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1 }); hl.monitor({ output = '$external', mode = '$external_mode', position = '$external_right_pos', scale = 1 })" >/dev/null
         notify_mode "extend-right" "External screen to the right"
       }
 
@@ -819,7 +819,7 @@ EOF
           return
         fi
 
-        hyprctl --batch "keyword monitor $external,$external_mode,0x0,1 ; keyword monitor $laptop,$laptop_mode,$laptop_right_pos,1" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$external', mode = '$external_mode', position = '0x0', scale = 1 }); hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '$laptop_right_pos', scale = 1 })" >/dev/null
         notify_mode "extend-left" "External screen to the left"
       }
 
@@ -830,9 +830,9 @@ EOF
           return
         fi
 
-        hyprctl keyword monitor "$laptop,$laptop_mode,0x0,1" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1 })" >/dev/null
         move_all_workspaces_to_monitor "$laptop"
-        hyprctl keyword monitor "$external,$mirror_mode,0x0,1,mirror,$laptop" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$external', mode = '$mirror_mode', position = '0x0', scale = 1, mirror = '$laptop' })" >/dev/null
         notify_mode "mirror" "Duplicating laptop screen"
       }
 
@@ -953,7 +953,7 @@ EOF
 
       dir="''${1:?direction required}"
       case "$dir" in
-        h|l|left) hypr_dir="l"; group_dir="b" ;;
+        h|left) hypr_dir="l"; group_dir="b" ;;
         j|d|down) hypr_dir="d"; group_dir="f" ;;
         k|u|up) hypr_dir="u"; group_dir="b" ;;
         l|r|right) hypr_dir="r"; group_dir="f" ;;
@@ -977,7 +977,7 @@ EOF
 
       dir="''${1:?direction required}"
       case "$dir" in
-        h|l|left) hypr_dir="l"; group_dir="b" ;;
+        h|left) hypr_dir="l"; group_dir="b" ;;
         j|d|down) hypr_dir="d"; group_dir="f" ;;
         k|u|up) hypr_dir="u"; group_dir="b" ;;
         l|r|right) hypr_dir="r"; group_dir="f" ;;
@@ -1275,6 +1275,9 @@ EOF
       set -euo pipefail
 
       workspace="10"
+      # Serialize session/manual starts while browser windows appear.
+      exec 9>"$XDG_RUNTIME_DIR/hypr-google-workspace.lock"
+      ${pkgs.util-linux}/bin/flock -n 9 || exit 0
       gmail_url="https://mail.google.com/mail/u/0/#inbox"
       chat_url="https://chat.google.com/"
       attempts="''${GOOGLE_WORKSPACE_ATTEMPTS:-80}"
@@ -1302,23 +1305,24 @@ EOF
 
       new_helium_after() {
         local before="$1"
+        local regex="$2"
 
-        hyprctl clients -j | jq -r --arg before "$before" '
+        hyprctl clients -j | jq -r --arg before "$before" --arg regex "$regex" '
           ($before | split("\n")) as $before_addresses
           | .[]
           | select((.class | ascii_downcase) == "helium")
           | select(.address as $address | (($before_addresses | index($address)) | not))
+          | select((.title // "") | test($regex; "i"))
           | .address
         ' | tail -n 1
       }
 
-      find_on_workspace() {
+      find_existing() {
         local regex="$1"
 
-        hyprctl clients -j | jq -r --argjson ws "$workspace" --arg regex "$regex" '
+        hyprctl clients -j | jq -r --arg regex "$regex" '
           .[]
           | select((.class | ascii_downcase) == "helium")
-          | select(.workspace.id == $ws)
           | select((.title // "") | test($regex; "i"))
           | .address
         ' | tail -n 1
@@ -1330,10 +1334,10 @@ EOF
         local before addr
 
         before="$(helium_addresses)"
-        hyprctl dispatch exec "[workspace $workspace silent] helium --new-window \"$url\"" >/dev/null
+        hyprctl dispatch "hl.dsp.exec_cmd('helium --new-window \"$url\"', { workspace = '$workspace silent' })" >/dev/null
 
         for _ in $(seq 1 "$attempts"); do
-          addr="$(new_helium_after "$before")"
+          addr="$(new_helium_after "$before" "$fallback_regex")"
           if [ -n "$addr" ]; then
             printf '%s\n' "$addr"
             return 0
@@ -1342,42 +1346,53 @@ EOF
           sleep "$delay"
         done
 
-        find_on_workspace "$fallback_regex"
+        find_existing "$fallback_regex"
       }
 
       move_tiled() {
         local addr="$1"
 
         [ -n "$addr" ] || return 0
-        hyprctl dispatch movetoworkspacesilent "$workspace,address:$addr" >/dev/null 2>&1 || true
-        hyprctl dispatch focuswindow "address:$addr" >/dev/null 2>&1 || true
-        hyprctl dispatch settiled >/dev/null 2>&1 || true
+        hyprctl dispatch "hl.dsp.window.move({ workspace = '$workspace', window = 'address:$addr', follow = false })" >/dev/null 2>&1 || true
+        hyprctl dispatch "hl.dsp.focus({ window = 'address:$addr' })" >/dev/null 2>&1 || true
+        hyprctl dispatch 'hl.dsp.window.float({ action = "off" })'  >/dev/null 2>&1 || true
       }
 
-      gmail_addr="$(find_on_workspace 'Gmail|Inbox|Mail')"
-      chat_addr="$(find_on_workspace '(^| - )Chat|Google Chat')"
+      gmail_addr="$(find_existing 'Gmail|Inbox|Mail')"
 
       if [ -z "$gmail_addr" ]; then
-        gmail_addr="$(launch_window "$gmail_url" 'Gmail|Inbox|Mail|Google Accounts')"
+        gmail_addr="$(launch_window "$gmail_url" 'Gmail|Inbox|Mail')"
       fi
 
+      # Browser startup can restore Chat, so check again after opening Gmail.
+      chat_addr="$(find_existing '(^| - )Chat|Google Chat')"
       if [ -z "$chat_addr" ]; then
-        chat_addr="$(launch_window "$chat_url" '(^| - )Chat|Google Chat|Google Accounts')"
+        chat_addr="$(launch_window "$chat_url" '(^| - )Chat|Google Chat')"
       fi
 
-      hyprctl dispatch workspace "$workspace" >/dev/null 2>&1 || true
+      # Recover matching windows restored on any workspace without closing tabs.
+      while read -r addr; do
+        [ -n "$addr" ] || continue
+        hyprctl dispatch "hl.dsp.window.move({ workspace = '$workspace', window = 'address:$addr', follow = false })" >/dev/null
+      done < <(hyprctl clients -j | jq -r '
+        .[] | select((.class | ascii_downcase) == "helium")
+        | select((.title // "") | test("Gmail|Inbox|Mail|(^| - )Chat|Google Chat"; "i"))
+        | .address
+      ')
+
+      hyprctl dispatch "hl.dsp.focus({ workspace = '$workspace' })" >/dev/null 2>&1 || true
 
       move_tiled "$gmail_addr"
-      hyprctl dispatch layoutmsg preselect r >/dev/null 2>&1 || true
+      hyprctl dispatch 'hl.dsp.layout("preselect r")'  >/dev/null 2>&1 || true
       move_tiled "$chat_addr"
 
       if [ -n "$gmail_addr" ]; then
-        hyprctl dispatch focuswindow "address:$gmail_addr" >/dev/null 2>&1 || true
-        hyprctl dispatch layoutmsg preselect r >/dev/null 2>&1 || true
+        hyprctl dispatch "hl.dsp.focus({ window = 'address:$gmail_addr' })" >/dev/null 2>&1 || true
+        hyprctl dispatch 'hl.dsp.layout("preselect r")'  >/dev/null 2>&1 || true
       fi
 
       if [ -n "$current_workspace" ] && [ "$current_workspace" != "$workspace" ]; then
-        hyprctl dispatch workspace "$current_workspace" >/dev/null 2>&1 || true
+        hyprctl dispatch "hl.dsp.focus({ workspace = '$current_workspace' })" >/dev/null 2>&1 || true
       fi
     '';
   };
@@ -1392,6 +1407,7 @@ EOF
     Service = {
       Type = "oneshot";
       ExecStart = "%h/.local/bin/hypr-google-workspace";
+      RemainAfterExit = true;
     };
 
     Install.WantedBy = [ "graphical-session.target" ];
@@ -1501,7 +1517,7 @@ EOF
           outer_color = "rgb(38bdf8)";
           check_color = "rgb(38bdf8)";
           fail_color = "rgb(f38ba8)";
-          placeholder_text = "<span foreground=\"##8fb9d0\">Password</span>";
+          placeholder_text = "Password";
         }
       ];
     };
@@ -1513,7 +1529,7 @@ EOF
       general = {
         lock_cmd = "pidof hyprlock || hyprlock";
         before_sleep_cmd = "loginctl lock-session";
-        after_sleep_cmd = "hyprctl dispatch dpms on";
+        after_sleep_cmd = "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'";
         ignore_dbus_inhibit = false;
       };
 
@@ -1529,8 +1545,8 @@ EOF
         }
         {
           timeout = 660;
-          on-timeout = "hyprctl dispatch dpms off";
-          on-resume = "hyprctl dispatch dpms on && brightnessctl -r";
+          on-timeout = "hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'";
+          on-resume = "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })' && brightnessctl -r";
         }
         {
           timeout = 1200;
@@ -1831,277 +1847,9 @@ EOF
   wayland.windowManager.hyprland = {
     enable = true;
     systemd.enable = false;
-    configType = "hyprlang";
-    importantPrefixes = [ "$" "bezier" "name" "output" "plugin" ];
-    settings = {
-      "$mod" = "SUPER";
-      plugin = "${pkgs.hyprlandPlugins.hy3}/lib/libhy3.so";
-
-      monitor = [
-        "eDP-1,1920x1080@60,0x0,1"
-        # MSI MP341CQ advertises a 4K preferred mode, but the panel is 3440x1440 ultrawide.
-        "HDMI-A-1,3440x1440@49.99,1920x0,1"
-        ",preferred,auto,1"
-      ];
-
-      env = [
-        "XCURSOR_THEME,Bibata-Modern-Classic"
-        "XCURSOR_SIZE,24"
-        "HYPRCURSOR_SIZE,24"
-        "GTK_THEME,Adwaita:dark"
-        "QT_QPA_PLATFORMTHEME,gtk3"
-        "QT_STYLE_OVERRIDE,adwaita-dark"
-      ];
-
-      input = {
-        kb_layout = "drix";
-        kb_variant = "";
-        kb_options = "caps:swapescape,ctrl:swap_lalt_lctl";
-        follow_mouse = 1;
-        natural_scroll = true;
-        sensitivity = 0;
-        touchpad = {
-          natural_scroll = true;
-        };
-      };
-
-      device = [
-        {
-          name = "logitech-usb-receiver-mouse";
-          sensitivity = -0.4;
-        }
-      ];
-
-      general = {
-        layout = "hy3";
-        border_size = 1;
-        gaps_in = 2;
-        gaps_out = 4;
-        "col.active_border" = "rgb(38bdf8)";
-        "col.inactive_border" = "rgb(6c7086)";
-      };
-
-      decoration = {
-        rounding = 0;
-        shadow = {
-          enabled = true;
-          range = 7;
-          render_power = 3;
-        };
-      };
-
-      animations = {
-        enabled = true;
-        bezier = [
-          "snappy, 0.15, 0.85, 0.20, 1.00"
-        ];
-        animation = [
-          "windows, 1, 12, snappy, popin 80%"
-          "windowsMove, 1, 14, snappy"
-          "windowsOut, 1, 8, snappy, popin 80%"
-          "border, 1, 12, snappy"
-          "fade, 1, 8, snappy"
-          "workspaces, 0"
-        ];
-      };
-
-      dwindle = {
-        force_split = 2;
-        preserve_split = true;
-        smart_split = false;
-        smart_resizing = false;
-        permanent_direction_override = true;
-        use_active_for_splits = true;
-        default_split_ratio = 1.0;
-        split_width_multiplier = 1.0;
-      };
-
-      group = {
-        auto_group = true;
-        insert_after_current = true;
-        focus_removed_window = true;
-        "col.border_active" = "rgb(38bdf8)";
-        "col.border_inactive" = "rgb(6c7086)";
-        "col.border_locked_active" = "rgb(38bdf8)";
-        "col.border_locked_inactive" = "rgb(6c7086)";
-        groupbar = {
-          enabled = true;
-          render_titles = true;
-          font_family = "MesloLGS Nerd Font";
-          font_size = 12;
-          height = 22;
-          text_padding = 8;
-          indicator_height = 2;
-          gradients = false;
-          scrolling = true;
-        };
-      };
-
-      misc = {
-        animate_manual_resizes = false;
-        background_color = "0xff000000";
-        disable_hyprland_logo = true;
-        disable_scale_notification = true;
-        disable_splash_rendering = true;
-      };
-
-      ecosystem = {
-        no_update_news = true;
-      };
-
-      exec-once = [
-        "waybar"
-        "mako"
-        "hyprpaper"
-        "systemctl --user restart hypridle.service"
-        "hypr-google-workspace"
-        "wl-paste --type text --watch cliphist store"
-        "wl-paste --type image --watch cliphist store"
-      ];
-
-      windowrule = [
-        "float yes, match:class pavucontrol"
-        "tile yes, match:class codex-desktop"
-      ];
-
-      bind =
-        [
-          "$mod, RETURN, exec, ghostty"
-          "$mod SHIFT, RETURN, exec, alacritty"
-          "$mod, O, exec, ghostty -e yazi"
-          "$mod, Q, killactive,"
-          "$mod, B, exec, helium-open"
-          "$mod SHIFT, B, exec, blueman-manager"
-          "$mod, D, exec, rofi -show drun"
-          "$mod, SPACE, exec, rofi -show combi -combi-modes drun,run"
-          "$mod, TAB, exec, rofi -show window"
-          "$mod SHIFT, P, exec, rofi-rbw --action copy --target password"
-          "$mod CTRL, P, exec, rofi-rbw --action type --target password"
-          "$mod SHIFT, X, exec, systemctl sleep"
-
-          "$mod, H, hy3:movefocus, l"
-          "$mod, J, hy3:movefocus, d"
-          "$mod, K, hy3:movefocus, u"
-          "$mod, L, hy3:movefocus, r"
-          "$mod, LEFT, hy3:movefocus, l"
-          "$mod, DOWN, hy3:movefocus, d"
-          "$mod, UP, hy3:movefocus, u"
-          "$mod, RIGHT, hy3:movefocus, r"
-
-          "$mod SHIFT, H, hy3:movewindow, l"
-          "$mod SHIFT, J, hy3:movewindow, d"
-          "$mod SHIFT, K, hy3:movewindow, u"
-          "$mod SHIFT, L, hy3:movewindow, r"
-          "$mod SHIFT, LEFT, hy3:movewindow, l"
-          "$mod SHIFT, DOWN, hy3:movewindow, d"
-          "$mod SHIFT, UP, hy3:movewindow, u"
-          "$mod SHIFT, RIGHT, hy3:movewindow, r"
-
-          "$mod, F, fullscreen,"
-          "$mod SHIFT, SPACE, togglefloating,"
-          "$mod, A, hy3:changefocus, raise"
-          "$mod, W, hy3:changegroup, tab"
-          "$mod, E, exec, hypr-hy3-toggle-split"
-          "$mod SHIFT, E, hy3:changegroup, untab"
-          "$mod, BRACKETLEFT, hy3:focustab, l, wrap"
-          "$mod, BRACKETRIGHT, hy3:focustab, r, wrap"
-
-          "$mod, R, submap, resize"
-          ", Print, exec, grim -g \"$(slurp)\" - | wl-copy"
-          "$mod, Print, exec, grim - | wl-copy"
-          "$mod, V, exec, push-to-talk-toggle-wayland"
-          "$mod, P, exec, hypr-projector menu"
-          ", XF86Display, exec, hypr-projector menu"
-        ]
-        ++ (
-          builtins.concatLists (builtins.genList
-            (i:
-              let
-                ws = if i == 9 then "10" else toString (i + 1);
-                key = if i == 9 then "0" else toString (i + 1);
-              in
-              [
-                "$mod, ${key}, workspace, ${ws}"
-                "$mod SHIFT, ${key}, movetoworkspace, ${ws}"
-              ])
-            10)
-        );
-
-      binde = [
-        ", XF86AudioRaiseVolume, exec, pamixer -i 10"
-        ", XF86AudioLowerVolume, exec, pamixer -d 10"
-        ", XF86MonBrightnessUp, exec, brightnessctl set +10%"
-        ", XF86MonBrightnessDown, exec, brightnessctl set 10%-"
-      ];
-
-      bindl = [
-        ", XF86AudioMute, exec, pamixer -t"
-        ", XF86AudioMicMute, exec, pamixer --default-source -t"
-      ];
-
-      bindm = [
-        "$mod, mouse:272, movewindow"
-        "$mod, mouse:273, resizewindow"
-      ];
-    };
-    extraConfig = ''
-      plugin {
-        hy3 {
-          no_gaps_when_only = 0
-          node_collapse_policy = 2
-          group_inset = 0
-          tab_first_window = false
-
-          tabs {
-            height = 22
-            padding = 0
-            from_top = true
-            radius = 0
-            border_width = 1
-            render_text = true
-            text_center = false
-            text_font = MesloLGS Nerd Font
-            text_height = 12
-            text_padding = 8
-            col.active = rgb(38bdf8)
-            col.active.border = rgb(38bdf8)
-            col.active.text = rgb(ffffff)
-            col.focused = rgb(062033)
-            col.focused.border = rgb(38bdf8)
-            col.focused.text = rgb(e8f7ff)
-            col.inactive = rgb(000000)
-            col.inactive.border = rgb(6c7086)
-            col.inactive.text = rgb(e8f7ff)
-            col.urgent = rgb(38bdf8)
-            col.urgent.border = rgb(38bdf8)
-            col.urgent.text = rgb(ffffff)
-            col.locked = rgb(38bdf8)
-            col.locked.border = rgb(38bdf8)
-            col.locked.text = rgb(ffffff)
-            blur = false
-            opacity = 1.0
-          }
-
-          autotile {
-            enable = false
-          }
-        }
-      }
-
-      submap = resize
-      binde = , H, resizeactive, -10 0
-      binde = , J, resizeactive, 0 10
-      binde = , K, resizeactive, 0 -10
-      binde = , L, resizeactive, 10 0
-      binde = , LEFT, resizeactive, -10 0
-      binde = , DOWN, resizeactive, 0 10
-      binde = , UP, resizeactive, 0 -10
-      binde = , RIGHT, resizeactive, 10 0
-      bind = , RETURN, submap, reset
-      bind = , ESCAPE, submap, reset
-      bind = $mod, R, submap, reset
-      submap = reset
-    '';
+    configType = "lua";
+    plugins = [ pkgs.hyprlandPlugins.hy3 ];
+    extraConfig = builtins.readFile ./hyprland.lua;
   };
 
   home.file.".local/bin/push-to-talk-toggle-wayland" = {

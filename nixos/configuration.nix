@@ -405,6 +405,8 @@ in
     XDG_CURRENT_DESKTOP = "Hyprland";
     XDG_SESSION_DESKTOP = "Hyprland";
     XDG_SESSION_TYPE = "wayland";
+    # Keep LD_LIBRARY_PATH scoped to development commands that need it.
+    # A global override shadows Hyprland's bundled C++ runtime and breaks login.
   };
 
   fonts.packages = with pkgs; [
@@ -425,6 +427,7 @@ in
     jq
     zip
     unzip
+    poppler-utils
     ripgrep
     fd
     google-cloud-sdk
