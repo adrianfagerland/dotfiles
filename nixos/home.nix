@@ -7,41 +7,9 @@ let
   '';
   codexResourceGuard = pkgs.writeShellApplication {
     name = "codex-resource-guard";
-    runtimeInputs = with pkgs; [ coreutils procps gawk systemd ];
+    runtimeInputs = with pkgs; [ python3 systemd ];
     text = ''
-      # Chromium can move the app into app-org.chromium.Chromium-<pid>.scope
-      # after launch. Identify the executable, not the desktop ID or scope name.
-      declare -A guarded=()
-      while IFS= read -r pid; do
-        executable="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
-        case "$executable" in
-          /nix/store/*-codex-desktop-*/opt/codex-desktop/ChatGPT|/nix/store/*-codex-desktop-*/opt/codex-desktop/electron) ;;
-          *) continue ;;
-        esac
-        cgroup_path="$(awk -F: '$1 == "0" { print $3; exit }' "/proc/$pid/cgroup" 2>/dev/null || true)"
-        # Never throttle a shared login/session service or the entire user slice.
-        case "$cgroup_path" in
-          */app.slice/app-*.scope) ;;
-          *) continue ;;
-        esac
-        scope_unit="''${cgroup_path##*/}"
-        [[ -z "''${guarded[$scope_unit]:-}" ]] || continue
-        guarded[$scope_unit]=1
-        # Avoid rewriting transient drop-ins every time the timer runs.
-        if [[ "$(systemctl --user show "$scope_unit" -p CPUQuotaPerSecUSec --value)" == "3s" &&
-              "$(systemctl --user show "$scope_unit" -p CPUWeight --value)" == "10" &&
-              "$(systemctl --user show "$scope_unit" -p IOWeight --value)" == "10" &&
-              "$(systemctl --user show "$scope_unit" -p MemoryHigh --value)" == "6442450944" ]]; then
-          continue
-        fi
-        systemctl --user set-property --runtime "$scope_unit" \
-          CPUQuota=300% CPUWeight=10 IOWeight=10 MemoryHigh=6G || {
-            # A process/scope may exit between discovery and setting properties.
-            if systemctl --user is-active --quiet "$scope_unit"; then
-              exit 1
-            fi
-          }
-      done < <(pgrep -u "$(id -u)" -x 'ChatGPT|electron' || true)
+      exec python3 ${./scripts/codex-resource-guard.py}
     '';
   };
 in
