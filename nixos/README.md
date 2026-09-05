@@ -50,6 +50,28 @@ sudo nixos-rebuild switch --flake .#nixos
 
 Commit `flake.lock` after testing.
 
+## Desktop responsiveness
+
+Codex Desktop and its child jobs share a 300% CPU quota and a 6 GiB memory
+high watermark, with lower CPU and I/O weights. The memory watermark applies
+reclaim/throttling; it is not a hard kill limit.
+
+Chromium can rename the running app's systemd scope, so
+`codex-resource-guard.timer` checks its actual executable and scope every
+15 seconds. It handles both the `ChatGPT` and legacy `electron` executables
+inside the Codex Nix package without matching ordinary browsers. Check it with:
+
+```sh
+systemctl --user status codex-resource-guard.timer
+journalctl --user -u codex-resource-guard.service
+cat /proc/pressure/{cpu,memory,io}
+```
+
+The September 2026 investigation found disk stalls, memory-pressure events,
+and an unguarded `app-org.chromium.Chromium-<pid>.scope` containing Codex and
+recursive store scans. This guard repairs the missing resource limits; it does
+not establish that every possible cause of a display freeze has been resolved.
+
 ## Google Drive sync
 
 Home Manager creates an rclone remote stub for the Vedtak shared drive

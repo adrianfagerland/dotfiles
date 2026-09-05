@@ -5,6 +5,45 @@ let
   } ''
     printf 'P6\n1 1\n255\n\0\0\0' > "$out"
   '';
+  codexResourceGuard = pkgs.writeShellApplication {
+    name = "codex-resource-guard";
+    runtimeInputs = with pkgs; [ coreutils procps gawk systemd ];
+    text = ''
+      # Chromium can move the app into app-org.chromium.Chromium-<pid>.scope
+      # after launch. Identify the executable, not the desktop ID or scope name.
+      declare -A guarded=()
+      while IFS= read -r pid; do
+        executable="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+        case "$executable" in
+          /nix/store/*-codex-desktop-*/opt/codex-desktop/ChatGPT|/nix/store/*-codex-desktop-*/opt/codex-desktop/electron) ;;
+          *) continue ;;
+        esac
+        cgroup_path="$(awk -F: '$1 == "0" { print $3; exit }' "/proc/$pid/cgroup" 2>/dev/null || true)"
+        # Never throttle a shared login/session service or the entire user slice.
+        case "$cgroup_path" in
+          */app.slice/app-*.scope) ;;
+          *) continue ;;
+        esac
+        scope_unit="''${cgroup_path##*/}"
+        [[ -z "''${guarded[$scope_unit]:-}" ]] || continue
+        guarded[$scope_unit]=1
+        # Avoid rewriting transient drop-ins every time the timer runs.
+        if [[ "$(systemctl --user show "$scope_unit" -p CPUQuotaPerSecUSec --value)" == "3s" &&
+              "$(systemctl --user show "$scope_unit" -p CPUWeight --value)" == "10" &&
+              "$(systemctl --user show "$scope_unit" -p IOWeight --value)" == "10" &&
+              "$(systemctl --user show "$scope_unit" -p MemoryHigh --value)" == "6442450944" ]]; then
+          continue
+        fi
+        systemctl --user set-property --runtime "$scope_unit" \
+          CPUQuota=300% CPUWeight=10 IOWeight=10 MemoryHigh=6G || {
+            # A process/scope may exit between discovery and setting properties.
+            if systemctl --user is-active --quiet "$scope_unit"; then
+              exit 1
+            fi
+          }
+      done < <(pgrep -u "$(id -u)" -x 'ChatGPT|electron' || true)
+    '';
+  };
 in
 {
   home.username = "adrian";
@@ -442,6 +481,25 @@ EOF
     '';
   };
 
+  systemd.user.services.codex-resource-guard = {
+    Unit.Description = "Apply resource limits to the actual Codex Desktop scope";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${codexResourceGuard}/bin/codex-resource-guard";
+      TimeoutStartSec = "15s";
+    };
+  };
+
+  systemd.user.timers.codex-resource-guard = {
+    Unit.Description = "Keep Codex Desktop resource limits applied after launch";
+    Timer = {
+      OnActiveSec = "5s";
+      OnUnitInactiveSec = "15s";
+      AccuracySec = "1s";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
   home.file.".local/bin/codex-desktop" = {
     executable = true;
     force = true;
@@ -457,7 +515,6 @@ EOF
       state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/codex-desktop"
       cache_dir="''${XDG_CACHE_HOME:-$HOME/.cache}/codex-desktop"
       config_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/Codex"
-      app_pid_file="$state_dir/app.pid"
       cleanup_marker="$state_dir/cleanup-on-next-launch"
       launcher_log="$cache_dir/launcher.log"
 
@@ -465,16 +522,15 @@ EOF
           local pid
           local executable
 
-          [ -r "$app_pid_file" ] || return 1
-          IFS= read -r pid < "$app_pid_file" || return 1
-          [[ "$pid" =~ ^[0-9]+$ ]] || return 1
-          [ -r "/proc/$pid/exe" ] || return 1
-          executable="$(${pkgs.coreutils}/bin/readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
-
-          case "$executable" in
-              */codex-desktop-*/opt/codex-desktop/electron) return 0 ;;
-              *) return 1 ;;
-          esac
+          # Current builds use ChatGPT and no longer write the legacy app.pid.
+          # Do not compact logs or clean caches while that app is still running.
+          while IFS= read -r pid; do
+              executable="$(${pkgs.coreutils}/bin/readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+              case "$executable" in
+                  /nix/store/*-codex-desktop-*/opt/codex-desktop/ChatGPT|/nix/store/*-codex-desktop-*/opt/codex-desktop/electron) return 0 ;;
+              esac
+          done < <(${pkgs.procps}/bin/pgrep -u "$(${pkgs.coreutils}/bin/id -u)" -x 'ChatGPT|electron' || true)
+          return 1
       }
 
       compact_launcher_log() {
@@ -522,27 +578,10 @@ EOF
           ${pkgs.coreutils}/bin/rm -f "$cleanup_marker"
       }
 
-      apply_resource_guard() {
-          local cgroup_path
-          local scope_unit
-
-          cgroup_path="$(${pkgs.gawk}/bin/awk -F: '$1 == "0" { print $3; exit }' /proc/self/cgroup 2>/dev/null || true)"
-          scope_unit="''${cgroup_path##*/}"
-
-          case "$scope_unit" in
-              app-codex-desktop-*.scope)
-                  ${pkgs.systemd}/bin/systemctl --user set-property --runtime "$scope_unit" \
-                      "CPUQuota=''${CODEX_DESKTOP_CPU_QUOTA:-300%}" \
-                      "CPUWeight=''${CODEX_DESKTOP_CPU_WEIGHT:-10}" \
-                      "IOWeight=''${CODEX_DESKTOP_IO_WEIGHT:-10}" \
-                      "MemoryHigh=''${CODEX_DESKTOP_MEMORY_HIGH:-6G}" \
-                      >/dev/null 2>&1 || true
-                  ;;
-          esac
-      }
-
       ${pkgs.coreutils}/bin/mkdir -p "$state_dir" "$cache_dir"
-      apply_resource_guard
+      if ! ${pkgs.systemd}/bin/systemctl --user start codex-resource-guard.timer; then
+          echo "Codex resource guard could not start; check the user service journal." >&2
+      fi
       if ! codex_is_running; then
           compact_launcher_log
           run_staged_cleanup
