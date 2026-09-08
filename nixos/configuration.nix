@@ -1,6 +1,22 @@
 { config, pkgs, ... }:
 
 let
+  # Nix-patched Bun bypasses nix-ld when dlopen loads npm native addons.
+  # Scope the compatibility libraries to Bun and its child processes; setting
+  # LD_LIBRARY_PATH for the desktop session can break Hyprland's runtime.
+  bunWithNativeLibraries = pkgs.symlinkJoin {
+    name = "bun-native-libraries-${pkgs.bun.version}";
+    paths = [ pkgs.bun ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      rm $out/bin/bun $out/bin/bunx
+      makeWrapper ${pkgs.bun}/bin/bun $out/bin/bun \
+        --suffix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath config.programs.nix-ld.libraries}
+      makeWrapper ${pkgs.bun}/bin/bun $out/bin/bunx \
+        --argv0 bunx \
+        --suffix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath config.programs.nix-ld.libraries}
+    '';
+  };
   heliumVersion = "0.16.1.1";
   heliumBrowserApp = pkgs.appimageTools.wrapType2 rec {
     pname = "helium";
@@ -97,8 +113,9 @@ in
 
       # Runtime libraries for Playwright's bundled Chromium (e2e tests). The
       # downloaded chrome-headless-shell uses the plain glibc loader, so these
-      # must be reachable via LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH at test time
-      # (they aggregate into /run/current-system/sw/share/nix-ld/lib).
+      # are exposed through LD_LIBRARY_PATH by bunWithNativeLibraries for Bun
+      # test commands and their children. Other runtimes still need a scoped
+      # LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH when launching these binaries.
       nss
       nspr
       atk
@@ -558,7 +575,7 @@ in
     claude-desktop-fhs
     uv
     pnpm
-    bun
+    bunWithNativeLibraries
     rustup
     spotify-player
 

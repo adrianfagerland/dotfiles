@@ -160,33 +160,33 @@ hl.curve("snappy", { type = "bezier", points = { {0.15, 0.85}, {0.20, 1.00} } })
 hl.animation({
   leaf = "windows",
   enabled = true,
-  speed = 12,
+  speed = 6,
   bezier = "snappy",
   style = "popin 80%",
 })
 hl.animation({
   leaf = "windowsMove",
   enabled = true,
-  speed = 14,
+  speed = 7,
   bezier = "snappy",
 })
 hl.animation({
   leaf = "windowsOut",
   enabled = true,
-  speed = 8,
+  speed = 4,
   bezier = "snappy",
   style = "popin 80%",
 })
 hl.animation({
   leaf = "border",
   enabled = true,
-  speed = 12,
+  speed = 6,
   bezier = "snappy",
 })
 hl.animation({
   leaf = "fade",
   enabled = true,
-  speed = 8,
+  speed = 4,
   bezier = "snappy",
 })
 hl.animation({
