@@ -17,13 +17,13 @@ let
         --suffix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath config.programs.nix-ld.libraries}
     '';
   };
-  heliumVersion = "0.16.1.1";
+  heliumVersion = "0.17.0.1";
   heliumBrowserApp = pkgs.appimageTools.wrapType2 rec {
     pname = "helium";
     version = heliumVersion;
     src = pkgs.fetchurl {
       url = "https://github.com/imputnet/helium-linux/releases/download/${version}/helium-${version}-x86_64.AppImage";
-      hash = "sha256-KZFPd7RdwbDQ/hDXgV4bZKytO+4dtyig7ctDzIj20ng=";
+      hash = "sha256-JmqdEwoXP/2GGAMS2gjAq7G2oWFuyUTr5ouMDhSOcHY=";
     };
     extraInstallCommands =
       let
@@ -89,11 +89,18 @@ in
   ];
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  # Nix downloads/unpacks through a root daemon outside the Codex job cgroup.
+  # Keep updates from saturating the shared root disk while the desktop is in use.
+  nix.settings.max-substitution-jobs = 2;
+  nix.settings.max-jobs = 1;
+  nix.settings.cores = 2;
+  systemd.services.nix-daemon.serviceConfig = {
+    CPUWeight = 10;
+    IOWeight = 10;
+    IOReadBandwidthMax = [ "/dev/nvme0n1 64M" ];
+    IOWriteBandwidthMax = [ "/dev/nvme0n1 16M" ];
+  };
   nixpkgs.config.allowUnfree = true;
-  nixpkgs.config.permittedInsecurePackages = [
-    # bitwarden-desktop 2026.5.0 is still packaged against this EOL Electron.
-    "electron-39.8.10"
-  ];
 
   programs.nix-ld = {
     enable = true;
@@ -174,6 +181,10 @@ in
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  # Permit the weekly fstrim service to reach the encrypted root filesystem.
+  # Accepted tradeoff: unused-block layout is visible; file contents stay encrypted.
+  boot.initrd.luks.devices.cryptroot.allowDiscards = true;
+
   # Retain useful native cores without allowing a browser/Electron renderer crash to
   # saturate RAM and disk for minutes. Browser wrappers additionally disable their
   # kernel core dumps; Chromium Crashpad still records its compact minidumps.
@@ -191,6 +202,14 @@ in
 
   powerManagement.enable = true;
   services.power-profiles-daemon.enable = true;
+
+  # Bound buffered-write bursts on the encrypted NVMe root. During the
+  # 2026-09-12 stalls, dirty pages exceeded 690 MiB with ample RAM available.
+  # These are writeback thresholds, not hard memory or disk bandwidth limits.
+  boot.kernel.sysctl = {
+    "vm.dirty_background_bytes" = 64 * 1024 * 1024;
+    "vm.dirty_bytes" = 256 * 1024 * 1024;
+  };
 
   # --- Out-of-memory handling ---------------------------------------------
   # On 2026-07-07 a memory spike drove free swap to ~0; a heap allocation in
@@ -315,6 +334,8 @@ in
 
   services.udev.extraRules = ''
     SUBSYSTEM=="power_supply", ATTR{type}=="Mains", RUN+="${pkgs.systemd}/bin/systemctl --no-block start power-profile-auto.service"
+    # Prefer bounded request scheduling under mixed desktop/build I/O.
+    ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="nvme0n1", ATTR{queue/scheduler}="mq-deadline"
   '';
 
   virtualisation.docker = {
@@ -574,6 +595,9 @@ in
     claude-code
     claude-desktop-fhs
     uv
+    python3
+    smartmontools
+    cryptsetup
     pnpm
     bunWithNativeLibraries
     rustup

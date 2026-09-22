@@ -33,6 +33,24 @@ class ResourceGuardTests(unittest.TestCase):
         }
         self.assertEqual(guard.codex_trees(processes), {10: [10, 11, 12, 13, 14]})
 
+    def test_jobs_do_not_share_ui_or_backend_limits(self):
+        processes = {
+            10: process(1, CODEX), 11: process(10, CODEX),
+            12: process(10, "/bin/codex"),
+            13: process(12, "/bin/bash"), 14: process(13, "/bin/bun"),
+            15: process(14, CODEX), 16: process(10, "/bin/node"),
+            17: process(16, "/bin/codex"),
+        }
+        self.assertEqual(guard.split_tree(10, list(processes), processes),
+                         ([10, 11, 12], [13, 14, 15, 16, 17]))
+
+    def test_ui_limits_clear_previous_throttling(self):
+        with patch.object(guard, "run", return_value=SimpleNamespace(stdout="")) as run:
+            guard.apply_limits("ui.scope", guard.UI_LIMITS)
+        for setting in ["CPUQuota=", "MemoryHigh=4294967296",
+                        "IOReadIOPSMax=", "IOWriteBandwidthMax="]:
+            self.assertIn(setting, run.call_args.args)
+
     def test_legacy_and_multiple_instances_keep_separate_trees(self):
         legacy = CODEX.replace("/ChatGPT", "/electron")
         processes = {10: process(1, CODEX), 20: process(1, legacy),
@@ -53,6 +71,12 @@ class ResourceGuardTests(unittest.TestCase):
         output = "\n".join(f"{k}={v}" for k, v in guard.LIMITS.items())
         with patch.object(guard, "run", return_value=SimpleNamespace(stdout=output)) as run:
             guard.apply_limits("app-codex-desktop-10.scope")
+        self.assertEqual(run.call_count, 1)
+
+    def test_unset_ui_io_arrays_do_not_cause_repeated_writes(self):
+        output = "\n".join(f"{k}={v}" for k, v in guard.UI_LIMITS.items() if v)
+        with patch.object(guard, "run", return_value=SimpleNamespace(stdout=output)) as run:
+            guard.apply_limits("ui.scope", guard.UI_LIMITS)
         self.assertEqual(run.call_count, 1)
 
     def test_missing_io_limits_are_applied_even_when_cpu_limits_match(self):

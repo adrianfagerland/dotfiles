@@ -438,14 +438,14 @@ EOF
     '';
   };
 
-  xdg.configFile."systemd/user/app-codex-desktop-.scope.d/50-resources.conf" = {
+  xdg.configFile."systemd/user/app-codex-jobs-.scope.d/50-resources.conf" = {
     force = true;
     text = ''
       [Scope]
       CPUQuota=300%
       CPUWeight=10
       IOWeight=10
-      MemoryHigh=6G
+      MemoryHigh=4G
     '';
   };
 
@@ -456,6 +456,25 @@ EOF
       ExecStart = "${codexResourceGuard}/bin/codex-resource-guard";
       TimeoutStartSec = "15s";
     };
+  };
+
+  # Replace the reviewed temporary guard unit that otherwise blocks HM activation.
+  xdg.configFile."systemd/user/codex-resource-guard.service".force = true;
+
+  systemd.user.services.desktop-health-monitor = {
+    Unit = {
+      Description = "Bounded desktop storage and memory monitoring";
+      ConditionPathExists = "%h/.local/state/desktop-health-monitor/until";
+    };
+    Service = {
+      ExecStart = "${pkgs.python3}/bin/python3 ${./scripts/desktop-health-monitor.py}";
+      Nice = 10;
+      IOSchedulingClass = "idle";
+      MemoryMax = "96M";
+      CPUQuota = "5%";
+      UMask = "0077";
+    };
+    Install.WantedBy = [ "default.target" ];
   };
 
   systemd.user.timers.codex-resource-guard = {

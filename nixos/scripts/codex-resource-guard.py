@@ -1,4 +1,4 @@
-"""Keep Codex and its descendants out of the compositor's systemd service."""
+"""Separate interactive Codex processes from resource-limited child jobs."""
 
 import os
 from pathlib import Path
@@ -14,12 +14,42 @@ LIMITS = {
     "CPUQuotaPerSecUSec": "3s",
     "CPUWeight": "10",
     "IOWeight": "10",
-    "MemoryHigh": "6442450944",
+    "MemoryHigh": "4294967296",
     "IOReadBandwidthMax": "/dev/nvme0n1 64000000",
     "IOWriteBandwidthMax": "/dev/nvme0n1 32000000",
     "IOReadIOPSMax": "/dev/nvme0n1 2000",
     "IOWriteIOPSMax": "/dev/nvme0n1 2000",
 }
+
+
+UI_LIMITS = {
+    "CPUQuotaPerSecUSec": "infinity",
+    "CPUWeight": "100",
+    "IOWeight": "100",
+    "MemoryHigh": "4294967296",
+    "IOReadBandwidthMax": "",
+    "IOWriteBandwidthMax": "",
+    "IOReadIOPSMax": "",
+    "IOWriteIOPSMax": "",
+}
+
+
+def split_tree(root, pids, processes):
+    """Keep Electron and its direct Codex backend responsive; limit other branches."""
+    ui, jobs = [], []
+    for pid in pids:
+        ancestor = pid
+        while ancestor != root:
+            exe = processes[ancestor]["exe"]
+            if not CODEX_EXE.fullmatch(exe) and not (
+                Path(exe).name == "codex" and processes[ancestor]["parent"] == root
+            ):
+                jobs.append(pid)
+                break
+            ancestor = processes[ancestor]["parent"]
+        else:
+            ui.append(pid)
+    return ui, jobs
 
 
 def read_processes(proc_root=Path("/proc")):
@@ -67,56 +97,64 @@ def manager_call(method, *args):
                "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", method, *args)
 
 
-def apply_limits(unit):
-    result = run("systemctl", "--user", "show", unit, "--property=" + ",".join(LIMITS))
+def apply_limits(unit, limits=LIMITS):
+    result = run("systemctl", "--user", "show", unit, "--property=" + ",".join(limits))
     current = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
-    if current != LIMITS:
+    # systemd omits empty array properties rather than printing an empty value.
+    current = {key: current.get(key, "") for key in limits}
+    if current != limits:
         run("systemctl", "--user", "set-property", "--runtime", unit,
-            "CPUQuota=300%", *(f"{key}={value}" for key, value in LIMITS.items()
+            ("CPUQuota=" if limits["CPUQuotaPerSecUSec"] == "infinity" else "CPUQuota=300%"), *(f"{key}={value}" for key, value in limits.items()
                               if key != "CPUQuotaPerSecUSec"))
 
 
 def guard():
     processes = read_processes()
     for root, pids in codex_trees(processes).items():
-        unit = f"app-codex-desktop-{root}.scope"
-        if run("systemctl", "--user", "is-active", "--quiet", unit, check=False).returncode:
-            # StartTransientUnit can adopt an existing process. Delegate allows
-            # AttachProcessesToUnit to collect children Chromium left elsewhere.
-            manager_call("StartTransientUnit", "ssa(sv)a(sa(sv))", unit, "fail", "3",
-                         "PIDs", "au", "1", str(root), "Delegate", "b", "true",
-                         "Slice", "s", "app.slice", "0")
-            for _ in range(20):
-                if not run("systemctl", "--user", "is-active", "--quiet", unit, check=False).returncode:
-                    break
-                time.sleep(0.05)
-            else:
-                raise RuntimeError(f"Scope did not become active: {unit}")
-        apply_limits(unit)
-        for pid in pids:
-            try:
-                # Recheck ancestry and current membership before adopting a PID;
-                # a fork/exit or PID reuse can race the initial snapshot.
-                ancestor = pid
-                seen = set()
-                while ancestor != root:
-                    if ancestor in seen or ancestor <= 1:
-                        break
-                    seen.add(ancestor)
-                    status = Path(f"/proc/{ancestor}/status").read_text()
-                    ancestor = int(next(line.split()[1] for line in status.splitlines()
-                                        if line.startswith("PPid:")))
-                if ancestor != root or not CODEX_EXE.fullmatch(os.readlink(f"/proc/{root}/exe")):
-                    continue
-                cgroup = Path(f"/proc/{pid}/cgroup").read_text().strip()
-                if cgroup.endswith("/" + unit):
-                    continue
-                manager_call("AttachProcessesToUnit", "ssau", unit, "", "1", str(pid))
-            except FileNotFoundError:
+        ui, jobs = split_tree(root, pids, processes)
+        for unit, pids, limits in [
+            (f"app-codex-jobs-{root}.scope", jobs, LIMITS),
+            (f"app-codex-desktop-{root}.scope", ui, UI_LIMITS),
+        ]:
+            if not pids:
                 continue
-            except subprocess.CalledProcessError:
-                if Path(f"/proc/{pid}").exists():
-                    raise
+            if run("systemctl", "--user", "is-active", "--quiet", unit, check=False).returncode:
+                # StartTransientUnit can adopt an existing process. Delegate allows
+                # AttachProcessesToUnit to collect children Chromium left elsewhere.
+                manager_call("StartTransientUnit", "ssa(sv)a(sa(sv))", unit, "fail", "3",
+                             "PIDs", "au", "1", str(pids[0]), "Delegate", "b", "true",
+                             "Slice", "s", "app.slice", "0")
+                for _ in range(20):
+                    if not run("systemctl", "--user", "is-active", "--quiet", unit, check=False).returncode:
+                        break
+                    time.sleep(0.05)
+                else:
+                    raise RuntimeError(f"Scope did not become active: {unit}")
+            apply_limits(unit, limits)
+            for pid in pids:
+                try:
+                    # Recheck ancestry and current membership before adopting a PID;
+                    # a fork/exit or PID reuse can race the initial snapshot.
+                    ancestor = pid
+                    seen = set()
+                    while ancestor != root:
+                        if ancestor in seen or ancestor <= 1:
+                            break
+                        seen.add(ancestor)
+                        status = Path(f"/proc/{ancestor}/status").read_text()
+                        ancestor = int(next(line.split()[1] for line in status.splitlines()
+                                            if line.startswith("PPid:")))
+                    if ancestor != root or not CODEX_EXE.fullmatch(os.readlink(f"/proc/{root}/exe")):
+                        continue
+                    cgroup = Path(f"/proc/{pid}/cgroup").read_text().strip()
+                    if cgroup.endswith("/" + unit):
+                        continue
+                    manager_call("AttachProcessesToUnit", "ssau", unit, "", "1", str(pid))
+                except FileNotFoundError:
+                    continue
+                except subprocess.CalledProcessError:
+                    if Path(f"/proc/{pid}").exists():
+                        raise
 
 
 if __name__ == "__main__":
