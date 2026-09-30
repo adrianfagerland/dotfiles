@@ -39,7 +39,28 @@
           nixpkgs.overlays = [
             (import ./overlays/ai-cli.nix)
             (final: prev: {
-              codex-desktop = codex-desktop-linux.packages.${final.stdenv.hostPlatform.system}.codex-desktop;
+              codex-desktop =
+                let
+                  packaged = codex-desktop-linux.packages.${final.stdenv.hostPlatform.system}.codex-desktop;
+                  version = "26.928.21956";
+                  upstreamDeb = final.fetchurl {
+                    url = "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_${version}_amd64.deb";
+                    hash = "sha256-msjQcRtGATaNSd7dv1Co/lI1jLYbbZ96XBi0HtRQCtg=";
+                  };
+                in
+                # Keep the official stable payload explicitly pinned.
+                packaged.overrideAttrs (old: {
+                  inherit version;
+                  __intentionallyOverridingVersion = true;
+                  installPhase = builtins.replaceStrings
+                    [ (toString old.passthru.upstreamDeb) ]
+                    [ (toString upstreamDeb) ]
+                    old.installPhase;
+                  passthru = old.passthru // {
+                    inherit upstreamDeb;
+                    upstreamVersion = version;
+                  };
+                });
             })
             claude-desktop.overlays.default
             nix-cachyos-kernel.overlays.pinned

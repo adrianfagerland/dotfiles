@@ -17,13 +17,13 @@ let
         --suffix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath config.programs.nix-ld.libraries}
     '';
   };
-  heliumVersion = "0.17.0.1";
+  heliumVersion = "0.18.1.1";
   heliumBrowserApp = pkgs.appimageTools.wrapType2 rec {
     pname = "helium";
     version = heliumVersion;
     src = pkgs.fetchurl {
       url = "https://github.com/imputnet/helium-linux/releases/download/${version}/helium-${version}-x86_64.AppImage";
-      hash = "sha256-JmqdEwoXP/2GGAMS2gjAq7G2oWFuyUTr5ouMDhSOcHY=";
+      hash = "sha256-0eG5k9+/7gbp+Q6KKc1Y6HpHUZewT8BIdQYifDOFacs=";
     };
     extraInstallCommands =
       let

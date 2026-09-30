@@ -14,6 +14,8 @@ let
   };
 in
 {
+  imports = [ ./codex-claude.nix ];
+
   home.username = "adrian";
   home.homeDirectory = "/home/adrian";
   home.stateVersion = "25.11";

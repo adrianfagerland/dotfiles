@@ -195,6 +195,35 @@ The automatic first run only performs `--resync` when `~/gdrive` is empty. If it
 is not empty, inspect the folder first and run the command above when the Drive
 side should be treated as the source of truth.
 
+## Claude in Codex
+
+Codex only speaks OpenAI's Responses API, so `codex-claude.nix` runs a loopback
+LiteLLM proxy (`codex-claude-proxy.service`, port 4100) that translates it to the
+Claude API, plus a Codex model catalog listing the Claude models. The proxy reads
+the API key from `~/.config/litellm/anthropic.env` (mode 600, outside the repo):
+
+```sh
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Switch Codex CLI and Desktop between providers, then restart Codex Desktop:
+
+```sh
+codex-provider claude                  # Claude Opus 5.5 by default
+codex-provider claude claude-sonnet-5  # or any slug from ~/.config/codex/claude-models.json
+codex-provider openai                  # back to the ChatGPT models
+codex-provider status
+```
+
+The switch edits the top-level `model`, `model_provider` and
+`model_catalog_json` keys in the app-managed `~/.codex/config.toml`, remembers
+the previous OpenAI model, and starts or stops the proxy. The proxy only runs
+while Codex is on Claude. Usage is billed to the Anthropic API key, and the
+model picker shows only one provider's models at a time.
+
+`codex-claude-instructions.md` is Codex's model-neutral base prompt, captured
+from Codex 0.155. Re-capture it if a later Codex version changes its tools.
+
 ## Roll back
 
 Temporarily switch back:
