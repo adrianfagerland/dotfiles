@@ -47,7 +47,7 @@ class ResourceGuardTests(unittest.TestCase):
     def test_ui_limits_clear_previous_throttling(self):
         with patch.object(guard, "run", return_value=SimpleNamespace(stdout="")) as run:
             guard.apply_limits("ui.scope", guard.UI_LIMITS)
-        for setting in ["CPUQuota=", "MemoryHigh=4294967296",
+        for setting in ["CPUQuota=", "MemoryHigh=6442450944",
                         "IOReadIOPSMax=", "IOWriteBandwidthMax="]:
             self.assertIn(setting, run.call_args.args)
 

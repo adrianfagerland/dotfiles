@@ -26,7 +26,10 @@ UI_LIMITS = {
     "CPUQuotaPerSecUSec": "infinity",
     "CPUWeight": "100",
     "IOWeight": "100",
-    "MemoryHigh": "4294967296",
+    # The retained browser renderers exceed 4 GiB in ordinary use. Reclaiming
+    # their working set at that point stalls typing and chat switching even
+    # when the host has free RAM. Keep a bounded UI threshold above that set.
+    "MemoryHigh": "6442450944",
     "IOReadBandwidthMax": "",
     "IOWriteBandwidthMax": "",
     "IOReadIOPSMax": "",
