@@ -14,11 +14,15 @@ LIMITS = {
     "CPUQuotaPerSecUSec": "3s",
     "CPUWeight": "10",
     "IOWeight": "10",
-    "MemoryHigh": "4294967296",
-    "IOReadBandwidthMax": "/dev/nvme0n1 64000000",
-    "IOWriteBandwidthMax": "/dev/nvme0n1 32000000",
-    "IOReadIOPSMax": "/dev/nvme0n1 2000",
-    "IOWriteIOPSMax": "/dev/nvme0n1 2000",
+    # Give concurrent development jobs 5 GiB before reclaim throttling. With
+    # the 7 GiB UI threshold, leave host headroom for zram and other apps.
+    "MemoryHigh": "5368709120",
+    # Hard disk caps also delay shared ext4 writeback and swapped-out pages.
+    # Prefer background CPU/I/O weights without holding up those dependencies.
+    "IOReadBandwidthMax": "",
+    "IOWriteBandwidthMax": "",
+    "IOReadIOPSMax": "",
+    "IOWriteIOPSMax": "",
 }
 
 
@@ -26,10 +30,9 @@ UI_LIMITS = {
     "CPUQuotaPerSecUSec": "infinity",
     "CPUWeight": "100",
     "IOWeight": "100",
-    # The retained browser renderers exceed 4 GiB in ordinary use. Reclaiming
-    # their working set at that point stalls typing and chat switching even
-    # when the host has free RAM. Keep a bounded UI threshold above that set.
-    "MemoryHigh": "6442450944",
+    # The UI also reaches 6 GiB during ordinary concurrent use. Prioritize
+    # its working set without giving all physical RAM to Codex.
+    "MemoryHigh": "7516192768",
     "IOReadBandwidthMax": "",
     "IOWriteBandwidthMax": "",
     "IOReadIOPSMax": "",

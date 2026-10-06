@@ -179,6 +179,8 @@ in
   i18n.defaultLocale = "en_US.UTF-8";
 
   boot.loader.systemd-boot.enable = true;
+  # Keep the current system and two recent rollback choices in the boot menu.
+  boot.loader.systemd-boot.configurationLimit = 3;
   boot.loader.efi.canTouchEfiVariables = true;
 
   # Permit the weekly fstrim service to reach the encrypted root filesystem.

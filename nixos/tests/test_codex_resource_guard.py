@@ -47,7 +47,7 @@ class ResourceGuardTests(unittest.TestCase):
     def test_ui_limits_clear_previous_throttling(self):
         with patch.object(guard, "run", return_value=SimpleNamespace(stdout="")) as run:
             guard.apply_limits("ui.scope", guard.UI_LIMITS)
-        for setting in ["CPUQuota=", "MemoryHigh=6442450944",
+        for setting in ["CPUQuota=", "MemoryHigh=7516192768",
                         "IOReadIOPSMax=", "IOWriteBandwidthMax="]:
             self.assertIn(setting, run.call_args.args)
 
@@ -79,13 +79,25 @@ class ResourceGuardTests(unittest.TestCase):
             guard.apply_limits("ui.scope", guard.UI_LIMITS)
         self.assertEqual(run.call_count, 1)
 
-    def test_missing_io_limits_are_applied_even_when_cpu_limits_match(self):
-        output = "\n".join(f"{k}={v}" for k, v in guard.LIMITS.items() if "IOPS" not in k)
+    def test_stale_job_io_caps_are_cleared_even_when_cpu_limits_match(self):
+        previous = dict(guard.LIMITS)
+        previous.update(IOReadBandwidthMax="/dev/nvme0n1 64000000",
+                        IOWriteBandwidthMax="/dev/nvme0n1 32000000",
+                        IOReadIOPSMax="/dev/nvme0n1 2000",
+                        IOWriteIOPSMax="/dev/nvme0n1 2000")
+        output = "\n".join(f"{k}={v}" for k, v in previous.items())
         with patch.object(guard, "run", return_value=SimpleNamespace(stdout=output)) as run:
             guard.apply_limits("app-codex-desktop-10.scope")
         self.assertEqual(run.call_count, 2)
-        self.assertIn("IOReadIOPSMax=/dev/nvme0n1 2000", run.call_args.args)
-        self.assertIn("IOWriteIOPSMax=/dev/nvme0n1 2000", run.call_args.args)
+        for setting in ["IOReadBandwidthMax=", "IOWriteBandwidthMax=",
+                        "IOReadIOPSMax=", "IOWriteIOPSMax="]:
+            self.assertIn(setting, run.call_args.args)
+
+    def test_unset_job_io_arrays_do_not_cause_repeated_writes(self):
+        output = "\n".join(f"{k}={v}" for k, v in guard.LIMITS.items() if v)
+        with patch.object(guard, "run", return_value=SimpleNamespace(stdout=output)) as run:
+            guard.apply_limits("jobs.scope")
+        self.assertEqual(run.call_count, 1)
 
 
 if __name__ == "__main__":

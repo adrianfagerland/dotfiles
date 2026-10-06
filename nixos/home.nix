@@ -447,7 +447,7 @@ EOF
       CPUQuota=300%
       CPUWeight=10
       IOWeight=10
-      MemoryHigh=4G
+      MemoryHigh=5G
     '';
   };
 
@@ -482,8 +482,10 @@ EOF
   systemd.user.timers.codex-resource-guard = {
     Unit.Description = "Keep Codex Desktop resource limits applied after launch";
     Timer = {
-      OnActiveSec = "5s";
-      OnUnitInactiveSec = "15s";
+      OnActiveSec = "1s";
+      # Child jobs initially inherit the UI group. Adopt them before a compiler
+      # or browser-test startup can push the interface into memory reclaim.
+      OnUnitInactiveSec = "2s";
       AccuracySec = "1s";
     };
     Install.WantedBy = [ "timers.target" ];
