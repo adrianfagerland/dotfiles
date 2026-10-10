@@ -42,10 +42,10 @@
               codex-desktop =
                 let
                   packaged = codex-desktop-linux.packages.${final.stdenv.hostPlatform.system}.codex-desktop;
-                  version = "26.928.21956";
+                  version = "26.1007.21434";
                   upstreamDeb = final.fetchurl {
                     url = "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_${version}_amd64.deb";
-                    hash = "sha256-msjQcRtGATaNSd7dv1Co/lI1jLYbbZ96XBi0HtRQCtg=";
+                    hash = "sha256-J2tTQcPXSyYdOtUhBvf6ft3gaEHkdn/ipAy1QJmx8+0=";
                   };
                 in
                 # Keep the official stable payload explicitly pinned.
