@@ -232,23 +232,20 @@ in
     }
   ];
 
-  # 3. earlyoom: shed a memory hog *before* the kernel's hard OOM wall, so a
-  #    spike can never starve the compositor into a failed allocation again.
-  #    SIGTERM at 5% free RAM / 10% free swap (SIGKILL at half of each). It is
-  #    told to never target the compositor or core session plumbing, and to
-  #    prefer the heavy Electron/browser apps as victims. earlyoom honours
-  #    oom_score_adj, and the compositor runs at +200 (more killable than the
-  #    default 0), so the explicit --avoid list is what actually shields it.
-  #    (A user systemd unit cannot lower Hyprland below the user manager's
-  #    score without CAP_SYS_RESOURCE, so --avoid is the reliable lever here.)
+  # 3. earlyoom: shed a memory hog before RAM and swap are exhausted.
+  #    SIGTERM at 10% available RAM / 20% free swap (SIGKILL at half of each).
+  #    --ignore excludes the compositor and core session processes; --avoid
+  #    only lowers their selection score and does not guarantee protection.
+  #    Never use -g here: apps launched by Hyprland share its process group.
+  #    On 2026-10-12 earlyoom selected a Helium renderer but signalled that
+  #    entire group, ending the graphical session and all its applications.
   services.earlyoom = {
     enable = true;
-    freeMemThreshold = 5;
-    freeSwapThreshold = 10;
+    freeMemThreshold = 10;
+    freeSwapThreshold = 20;
     enableNotifications = true; # desktop notification naming the killed process
     extraArgs = [
-      "-g" # kill the whole process group (e.g. a browser's tab tree)
-      "--avoid"
+      "--ignore"
       "(Hyprland|hyprlock|wayland-wm|uwsm|Xwayland|systemd|sd-pam|gnome-keyring|pipewire|wireplumber|dbus|sshd)"
       "--prefer"
       "(helium|chrome|chromium|electron|claude|codex|bun)"
