@@ -3,10 +3,10 @@
 
   nixConfig = {
     extra-substituters = [
-      "https://attic.xuyh0120.win/lantian"
+      "https://cache.lantian.pub/lantian"
     ];
     extra-trusted-public-keys = [
-      "lantian:EeAUQ+W+6r7EtwnmYjeVwx5kOGEBpjlBfPlzGlTNvHc="
+      "lantian:WVGO7vsRMSEN+h7Lp7kv6SAmrkEXgUGbbXm7jMDjBuQ="
     ];
   };
 
@@ -42,10 +42,10 @@
               codex-desktop =
                 let
                   packaged = codex-desktop-linux.packages.${final.stdenv.hostPlatform.system}.codex-desktop;
-                  version = "26.1007.21434";
+                  version = "26.1103.60933";
                   upstreamDeb = final.fetchurl {
                     url = "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_${version}_amd64.deb";
-                    hash = "sha256-J2tTQcPXSyYdOtUhBvf6ft3gaEHkdn/ipAy1QJmx8+0=";
+                    hash = "sha256-B0bpuldRgvXb4yYXuCpkXrk61XyliOWpNYaVprZa7nE=";
                   };
                 in
                 # Keep the official stable payload explicitly pinned.
@@ -63,16 +63,26 @@
                 });
             })
             claude-desktop.overlays.default
+            (final: prev: {
+              # Pin the official stable payload while the packaging input catches up.
+              claude-desktop = prev.claude-desktop.overrideAttrs (_: rec {
+                version = "4.23118.1";
+                src = final.fetchurl {
+                  url = "https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop/claude-desktop_${version}_amd64.deb";
+                  hash = "sha256-sJzN1ys4kWyWN9SFSNtw53xCXrLgm7RnRlQJ0v+dKHo=";
+                };
+              });
+            })
             nix-cachyos-kernel.overlays.pinned
           ];
 
           boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest;
 
           nix.settings.substituters = [
-            "https://attic.xuyh0120.win/lantian"
+            "https://cache.lantian.pub/lantian"
           ];
           nix.settings.trusted-public-keys = [
-            "lantian:EeAUQ+W+6r7EtwnmYjeVwx5kOGEBpjlBfPlzGlTNvHc="
+            "lantian:WVGO7vsRMSEN+h7Lp7kv6SAmrkEXgUGbbXm7jMDjBuQ="
           ];
 
           home-manager.useGlobalPkgs = true;

@@ -15,6 +15,8 @@ hl.monitor({
   mode = "1920x1080@60",
   position = "0x0",
   scale = 1,
+  -- Keep wide-color surfaces in a 10-bit output format.
+  bitdepth = 10,
 })
 hl.monitor({
   output = "HDMI-A-1",

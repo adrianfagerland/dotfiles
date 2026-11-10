@@ -37,6 +37,38 @@ scp -r nixos/. adrian@<laptop-ip>:/tmp/nixos-config/
 ssh -t adrian@<laptop-ip> 'sudo cp -a /tmp/nixos-config/. /etc/nixos/ && cd /etc/nixos && sudo nixos-rebuild switch --flake .#nixos'
 ```
 
+## Remote desktop into this laptop
+
+WayVNC shares the current Hyprland session and starts automatically at graphical
+login. It listens only on `127.0.0.1:5900`; SSH handles remote access and encryption.
+The VNC password is generated on first start in a private file outside the Nix store.
+This uses WayVNC's [legacy client authentication](https://github.com/any1/wayvnc#des-authentication-legacy)
+for compatibility with macOS Screen Sharing, protected by the SSH tunnel.
+
+On the connecting computer (with Tailscale connected and an authorized SSH key):
+
+```sh
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:5901:127.0.0.1:5900 adrian@100.109.249.84
+```
+
+Keep that terminal open. Connect the VNC viewer to `127.0.0.1:5901`.
+On macOS, run `open vnc://127.0.0.1:5901` in another terminal.
+Retrieve the VNC password with:
+
+```sh
+ssh adrian@100.109.249.84 "sed -n 's/^password=//p' ~/.local/state/wayvnc/config"
+```
+
+This needs a logged-in graphical session and an awake laptop. The current power
+settings suspend on lid close and after 45 minutes idle on AC power. For an
+unattended remote session, leave the lid open and run `caffeinate` on the laptop
+for as long as it needs to remain reachable. A locked session still requires
+the normal desktop password to unlock.
+
+On the laptop, use `systemctl --user status wayvnc` to inspect the server,
+`systemctl --user restart wayvnc` to restart it, or
+`journalctl --user -u wayvnc -n 50` for logs.
+
 ## Update packages
 
 Update pinned inputs and rebuild:
@@ -48,8 +80,19 @@ sudo nixos-rebuild switch --flake path:/home/adrian/dotfiles/nixos#nixos --accep
 ```
 
 Commit `flake.lock` after testing. The Codex CLI and Claude Code versions in
-`overlays/ai-cli.nix` and the Helium version/hash in `configuration.nix` are
-pinned separately; `nix flake update` does not update those pins.
+`overlays/ai-cli.nix`, the desktop app versions/hashes in `flake.nix`, and the
+Helium version/hash in `configuration.nix` are pinned separately;
+`nix flake update` does not update those pins.
+The CachyOS cache moved to `https://cache.lantian.pub/lantian` with a new
+signing key. On a generation that still trusts the old cache, bootstrap the
+updated cache settings during the first rebuild:
+
+```sh
+sudo nixos-rebuild switch --flake path:/home/adrian/dotfiles/nixos#nixos --accept-flake-config \
+  --option substituters 'https://cache.nixos.org/ https://cache.lantian.pub/lantian' \
+  --option trusted-public-keys 'cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= lantian:WVGO7vsRMSEN+h7Lp7kv6SAmrkEXgUGbbXm7jMDjBuQ='
+```
+
 A successful build does not activate the configuration. Kernel/initrd changes
 need a reboot into the new generation; running applications need a normal
 restart to use their updated binaries.

@@ -22,6 +22,47 @@ in
 
   programs.home-manager.enable = true;
 
+  home.packages = [ pkgs.wayvnc pkgs.ffmpeg ];
+
+  # Share the logged-in Hyprland desktop through an SSH tunnel. Keep the
+  # password outside the Nix store and allow legacy auth for macOS Screen Sharing;
+  # SSH provides transport encryption and public-key authentication.
+  systemd.user.services.wayvnc = {
+    Unit = {
+      Description = "VNC access to the current Wayland desktop over SSH";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+    Service = {
+      StateDirectory = "wayvnc";
+      StateDirectoryMode = "0700";
+      UMask = "0077";
+      ExecStartPre = pkgs.writeShellScript "wayvnc-init" ''
+        set -eu
+        if [ ! -e "$STATE_DIRECTORY/config" ]; then
+          tmp="$(${pkgs.coreutils}/bin/mktemp "$STATE_DIRECTORY/config.XXXXXX")"
+          trap '${pkgs.coreutils}/bin/rm -f "$tmp"' EXIT
+          password="$(${pkgs.openssl}/bin/openssl rand -base64 6)"
+          cat > "$tmp" <<EOF
+        address=127.0.0.1
+        port=5900
+        enable_auth=true
+        password=$password
+        relax_encryption=true
+        allow_broken_crypto=true
+        xkb_layout=us
+        EOF
+          ${pkgs.coreutils}/bin/mv "$tmp" "$STATE_DIRECTORY/config"
+        fi
+      '';
+      ExecStart = "${pkgs.wayvnc}/bin/wayvnc --config=%S/wayvnc/config --max-fps=30 --disable-resizing";
+      Restart = "on-failure";
+      RestartSec = 5;
+      NoNewPrivileges = true;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
   home.pointerCursor = {
     enable = true;
     package = pkgs.bibata-cursors;
@@ -812,7 +853,7 @@ EOF
       }
 
       apply_laptop() {
-        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1 })" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1, bitdepth = 10 })" >/dev/null
         move_all_workspaces_to_monitor "$laptop"
         hyprctl eval "hl.monitor({ output = '$external', disabled = true })" >/dev/null 2>&1 || true
         notify_mode "laptop" "Laptop screen only"
@@ -838,7 +879,7 @@ EOF
           return
         fi
 
-        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1 }); hl.monitor({ output = '$external', mode = '$external_mode', position = '$external_right_pos', scale = 1 })" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1, bitdepth = 10 }); hl.monitor({ output = '$external', mode = '$external_mode', position = '$external_right_pos', scale = 1 })" >/dev/null
         notify_mode "extend-right" "External screen to the right"
       }
 
@@ -849,7 +890,7 @@ EOF
           return
         fi
 
-        hyprctl eval "hl.monitor({ output = '$external', mode = '$external_mode', position = '0x0', scale = 1 }); hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '$laptop_right_pos', scale = 1 })" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$external', mode = '$external_mode', position = '0x0', scale = 1 }); hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '$laptop_right_pos', scale = 1, bitdepth = 10 })" >/dev/null
         notify_mode "extend-left" "External screen to the left"
       }
 
@@ -860,7 +901,7 @@ EOF
           return
         fi
 
-        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1 })" >/dev/null
+        hyprctl eval "hl.monitor({ output = '$laptop', mode = '$laptop_mode', position = '0x0', scale = 1, bitdepth = 10 })" >/dev/null
         move_all_workspaces_to_monitor "$laptop"
         hyprctl eval "hl.monitor({ output = '$external', mode = '$mirror_mode', position = '0x0', scale = 1, mirror = '$laptop' })" >/dev/null
         notify_mode "mirror" "Duplicating laptop screen"
@@ -1747,11 +1788,14 @@ EOF
       layer = "top";
       position = "bottom";
       height = 28;
-      modules-left = [ "hyprland/workspaces" "hyprland/window" ];
+      modules-left = [ "ext/workspaces" "hyprland/window" ];
       modules-right = [ "bluetooth" "pulseaudio" "battery" "custom/power-draw" "memory" "cpu" "network" "clock" ];
-      "hyprland/workspaces" = {
-        disable-scroll = true;
+      # Use the Wayland workspace protocol: Waybar 0.15's Hyprland module
+      # still sends legacy dispatch commands, which fail with Lua configs.
+      "ext/workspaces" = {
+        on-click = "activate";
         all-outputs = true;
+        ignore-hidden = false;
       };
       "hyprland/window" = {
         max-length = 60;
