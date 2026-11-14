@@ -43,11 +43,11 @@ let
 
   claude-code-bin = final.stdenvNoCC.mkDerivation rec {
     pname = "claude-code";
-    version = "2.1.322";
+    version = "2.1.325";
 
     src = final.fetchurl {
       url = "https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-${version}.tgz";
-      hash = "sha256-PMF12CmAwgq2YFfTRb0tkTJE+M8XkdEHIqEiUhS1chk=";
+      hash = "sha256-6HNdN1IfScMdZcPc2MDIur5tH19ywgZjRrOuiNMqwx0=";
     };
 
     nativeBuildInputs = [
