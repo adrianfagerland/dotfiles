@@ -89,6 +89,10 @@ in
   ];
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  # A bare `nixos-rebuild` uses /etc/nixos/flake.nix, which still held the
+  # install-time copy from May 2026. Point it at this repo instead; the
+  # string (not a path) keeps it a live link rather than a store snapshot.
+  environment.etc."nixos/flake.nix".source = "/home/adrian/dotfiles/nixos/flake.nix";
   # Nix downloads/unpacks through a root daemon outside the Codex job cgroup.
   # Keep updates from saturating the shared root disk while the desktop is in use.
   nix.settings.max-substitution-jobs = 2;
